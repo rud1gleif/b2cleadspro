@@ -8,6 +8,156 @@ let selectedLocations = [];
 let leadsPage = 1;
 let pollTimer = null;
 
+/* ---- BUILT-IN CITY LIST (fallback when DB is empty) ---- */
+const CITIES = [
+  {city:'New York',country:'United States',country_code:'US'},
+  {city:'Los Angeles',country:'United States',country_code:'US'},
+  {city:'Chicago',country:'United States',country_code:'US'},
+  {city:'Houston',country:'United States',country_code:'US'},
+  {city:'Phoenix',country:'United States',country_code:'US'},
+  {city:'Philadelphia',country:'United States',country_code:'US'},
+  {city:'San Antonio',country:'United States',country_code:'US'},
+  {city:'San Diego',country:'United States',country_code:'US'},
+  {city:'Dallas',country:'United States',country_code:'US'},
+  {city:'San Jose',country:'United States',country_code:'US'},
+  {city:'Austin',country:'United States',country_code:'US'},
+  {city:'Jacksonville',country:'United States',country_code:'US'},
+  {city:'Fort Worth',country:'United States',country_code:'US'},
+  {city:'Columbus',country:'United States',country_code:'US'},
+  {city:'Charlotte',country:'United States',country_code:'US'},
+  {city:'Indianapolis',country:'United States',country_code:'US'},
+  {city:'San Francisco',country:'United States',country_code:'US'},
+  {city:'Seattle',country:'United States',country_code:'US'},
+  {city:'Denver',country:'United States',country_code:'US'},
+  {city:'Nashville',country:'United States',country_code:'US'},
+  {city:'Oklahoma City',country:'United States',country_code:'US'},
+  {city:'El Paso',country:'United States',country_code:'US'},
+  {city:'Las Vegas',country:'United States',country_code:'US'},
+  {city:'Louisville',country:'United States',country_code:'US'},
+  {city:'Baltimore',country:'United States',country_code:'US'},
+  {city:'Milwaukee',country:'United States',country_code:'US'},
+  {city:'Albuquerque',country:'United States',country_code:'US'},
+  {city:'Tucson',country:'United States',country_code:'US'},
+  {city:'Fresno',country:'United States',country_code:'US'},
+  {city:'Sacramento',country:'United States',country_code:'US'},
+  {city:'Mesa',country:'United States',country_code:'US'},
+  {city:'Kansas City',country:'United States',country_code:'US'},
+  {city:'Atlanta',country:'United States',country_code:'US'},
+  {city:'Omaha',country:'United States',country_code:'US'},
+  {city:'Colorado Springs',country:'United States',country_code:'US'},
+  {city:'Raleigh',country:'United States',country_code:'US'},
+  {city:'Miami',country:'United States',country_code:'US'},
+  {city:'Long Beach',country:'United States',country_code:'US'},
+  {city:'Virginia Beach',country:'United States',country_code:'US'},
+  {city:'Minneapolis',country:'United States',country_code:'US'},
+  {city:'Tampa',country:'United States',country_code:'US'},
+  {city:'New Orleans',country:'United States',country_code:'US'},
+  {city:'Arlington',country:'United States',country_code:'US'},
+  {city:'Bakersfield',country:'United States',country_code:'US'},
+  {city:'Honolulu',country:'United States',country_code:'US'},
+  {city:'Anaheim',country:'United States',country_code:'US'},
+  {city:'Aurora',country:'United States',country_code:'US'},
+  {city:'Santa Ana',country:'United States',country_code:'US'},
+  {city:'Corpus Christi',country:'United States',country_code:'US'},
+  {city:'Riverside',country:'United States',country_code:'US'},
+  {city:'Portland',country:'United States',country_code:'US'},
+  {city:'Pittsburgh',country:'United States',country_code:'US'},
+  {city:'Boston',country:'United States',country_code:'US'},
+  {city:'Detroit',country:'United States',country_code:'US'},
+  {city:'Orlando',country:'United States',country_code:'US'},
+  {city:'Cleveland',country:'United States',country_code:'US'},
+  {city:'Cincinnati',country:'United States',country_code:'US'},
+  {city:'St. Louis',country:'United States',country_code:'US'},
+  {city:'London',country:'United Kingdom',country_code:'GB'},
+  {city:'Manchester',country:'United Kingdom',country_code:'GB'},
+  {city:'Birmingham',country:'United Kingdom',country_code:'GB'},
+  {city:'Glasgow',country:'United Kingdom',country_code:'GB'},
+  {city:'Leeds',country:'United Kingdom',country_code:'GB'},
+  {city:'Liverpool',country:'United Kingdom',country_code:'GB'},
+  {city:'Toronto',country:'Canada',country_code:'CA'},
+  {city:'Vancouver',country:'Canada',country_code:'CA'},
+  {city:'Montreal',country:'Canada',country_code:'CA'},
+  {city:'Calgary',country:'Canada',country_code:'CA'},
+  {city:'Ottawa',country:'Canada',country_code:'CA'},
+  {city:'Sydney',country:'Australia',country_code:'AU'},
+  {city:'Melbourne',country:'Australia',country_code:'AU'},
+  {city:'Brisbane',country:'Australia',country_code:'AU'},
+  {city:'Perth',country:'Australia',country_code:'AU'},
+  {city:'Adelaide',country:'Australia',country_code:'AU'},
+  {city:'Dublin',country:'Ireland',country_code:'IE'},
+  {city:'Auckland',country:'New Zealand',country_code:'NZ'},
+  {city:'Berlin',country:'Germany',country_code:'DE'},
+  {city:'Munich',country:'Germany',country_code:'DE'},
+  {city:'Hamburg',country:'Germany',country_code:'DE'},
+  {city:'Paris',country:'France',country_code:'FR'},
+  {city:'Lyon',country:'France',country_code:'FR'},
+  {city:'Madrid',country:'Spain',country_code:'ES'},
+  {city:'Barcelona',country:'Spain',country_code:'ES'},
+  {city:'Rome',country:'Italy',country_code:'IT'},
+  {city:'Milan',country:'Italy',country_code:'IT'},
+  {city:'Amsterdam',country:'Netherlands',country_code:'NL'},
+  {city:'Brussels',country:'Belgium',country_code:'BE'},
+  {city:'Zurich',country:'Switzerland',country_code:'CH'},
+  {city:'Stockholm',country:'Sweden',country_code:'SE'},
+  {city:'Oslo',country:'Norway',country_code:'NO'},
+  {city:'Copenhagen',country:'Denmark',country_code:'DK'},
+  {city:'Helsinki',country:'Finland',country_code:'FI'},
+  {city:'Warsaw',country:'Poland',country_code:'PL'},
+  {city:'Prague',country:'Czech Republic',country_code:'CZ'},
+  {city:'Vienna',country:'Austria',country_code:'AT'},
+  {city:'Lisbon',country:'Portugal',country_code:'PT'},
+  {city:'Mexico City',country:'Mexico',country_code:'MX'},
+  {city:'Guadalajara',country:'Mexico',country_code:'MX'},
+  {city:'Monterrey',country:'Mexico',country_code:'MX'},
+  {city:'São Paulo',country:'Brazil',country_code:'BR'},
+  {city:'Rio de Janeiro',country:'Brazil',country_code:'BR'},
+  {city:'Buenos Aires',country:'Argentina',country_code:'AR'},
+  {city:'Bogotá',country:'Colombia',country_code:'CO'},
+  {city:'Santiago',country:'Chile',country_code:'CL'},
+  {city:'Lima',country:'Peru',country_code:'PE'},
+  {city:'Dubai',country:'UAE',country_code:'AE'},
+  {city:'Abu Dhabi',country:'UAE',country_code:'AE'},
+  {city:'Riyadh',country:'Saudi Arabia',country_code:'SA'},
+  {city:'Doha',country:'Qatar',country_code:'QA'},
+  {city:'Kuwait City',country:'Kuwait',country_code:'KW'},
+  {city:'Tel Aviv',country:'Israel',country_code:'IL'},
+  {city:'Istanbul',country:'Turkey',country_code:'TR'},
+  {city:'Ankara',country:'Turkey',country_code:'TR'},
+  {city:'Cairo',country:'Egypt',country_code:'EG'},
+  {city:'Lagos',country:'Nigeria',country_code:'NG'},
+  {city:'Nairobi',country:'Kenya',country_code:'KE'},
+  {city:'Johannesburg',country:'South Africa',country_code:'ZA'},
+  {city:'Cape Town',country:'South Africa',country_code:'ZA'},
+  {city:'Mumbai',country:'India',country_code:'IN'},
+  {city:'Delhi',country:'India',country_code:'IN'},
+  {city:'Bangalore',country:'India',country_code:'IN'},
+  {city:'Hyderabad',country:'India',country_code:'IN'},
+  {city:'Chennai',country:'India',country_code:'IN'},
+  {city:'Pune',country:'India',country_code:'IN'},
+  {city:'Tokyo',country:'Japan',country_code:'JP'},
+  {city:'Osaka',country:'Japan',country_code:'JP'},
+  {city:'Beijing',country:'China',country_code:'CN'},
+  {city:'Shanghai',country:'China',country_code:'CN'},
+  {city:'Shenzhen',country:'China',country_code:'CN'},
+  {city:'Hong Kong',country:'Hong Kong',country_code:'HK'},
+  {city:'Singapore',country:'Singapore',country_code:'SG'},
+  {city:'Seoul',country:'South Korea',country_code:'KR'},
+  {city:'Kuala Lumpur',country:'Malaysia',country_code:'MY'},
+  {city:'Jakarta',country:'Indonesia',country_code:'ID'},
+  {city:'Bangkok',country:'Thailand',country_code:'TH'},
+  {city:'Manila',country:'Philippines',country_code:'PH'},
+  {city:'Ho Chi Minh City',country:'Vietnam',country_code:'VN'},
+];
+
+function searchCities(q) {
+  const lq = q.toLowerCase();
+  return CITIES.filter(c =>
+    c.city.toLowerCase().includes(lq) ||
+    c.country.toLowerCase().includes(lq) ||
+    c.country_code.toLowerCase().includes(lq)
+  ).slice(0, 12);
+}
+
 /* ---- NAVIGATION ---- */
 function showPage(name, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -137,60 +287,85 @@ async function searchLocations() {
   const q = document.getElementById('location-search').value.trim();
   const dd = document.getElementById('location-dropdown');
   clearTimeout(searchDebounce);
-  if (q.length < 2) { dd.classList.remove('open'); return; }
-  searchDebounce = setTimeout(async () => {
-    try {
-      const results = await api(`/api/locations/search?q=${encodeURIComponent(q)}`);
-      let html = results.map(r =>
-        `<div class="dropdown-item" onclick="addLocation(${r.id},'${(r.city||r.country).replace(/'/g,"\\'")}','${r.country_code}')">${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span></div>`
-      ).join('');
-      // Always show a "create" option at the bottom
-      html += `<div class="dropdown-item" style="border-top:1px solid var(--color-border);color:var(--color-primary)" onclick="createAndAddLocation('${q.replace(/'/g,"\\'")}')">
-        ➕ Add "${q}" as new location
-      </div>`;
-      dd.innerHTML = html;
-      dd.classList.add('open');
-    } catch(e) { console.error(e); }
-  }, 300);
+  if (q.length < 1) { dd.classList.remove('open'); return; }
+
+  // 1. Instantly show built-in matches
+  const local = searchCities(q);
+  renderDropdown(dd, local, q);
+
+  // 2. Also query the DB asynchronously and merge results
+  if (q.length >= 2) {
+    searchDebounce = setTimeout(async () => {
+      try {
+        const dbResults = await api(`/api/locations/search?q=${encodeURIComponent(q)}`);
+        // Merge: DB results first (they have real IDs), then built-in not already shown
+        const dbCities = new Set(dbResults.map(r => (r.city || r.country).toLowerCase()));
+        const extra = local.filter(c => !dbCities.has(c.city.toLowerCase()));
+        renderDropdown(dd, dbResults, q, extra);
+      } catch(e) { /* keep showing local results */ }
+    }, 300);
+  }
 }
 
-// Allow pressing Enter to instantly create & add the typed location
-document.addEventListener('DOMContentLoaded', () => {
-  const input = document.getElementById('location-search');
-  if (input) {
-    input.addEventListener('keydown', async (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        const q = input.value.trim();
-        if (q.length < 2) return;
-        await createAndAddLocation(q);
-      }
-    });
-  }
-  loadDashboard();
-  pollTimer = setInterval(loadDashboard, 6000);
-});
+function renderDropdown(dd, dbResults, q, localFallback = []) {
+  let html = '';
 
-async function createAndAddLocation(name) {
+  // DB results (real IDs — can be selected directly)
+  html += dbResults.map(r =>
+    `<div class="dropdown-item" onclick="addLocation(${JSON.stringify(r.id)},'${(r.city||r.country).replace(/'/g,"\\'")}','${r.country_code}')">
+      ${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span>
+    </div>`
+  ).join('');
+
+  // Built-in cities not already in DB (will POST to create)
+  html += localFallback.map(c =>
+    `<div class="dropdown-item" onclick="createAndAddLocation('${c.city.replace(/'/g,"\\'")}','${c.country.replace(/'/g,"\\'")}','${c.country_code}')">
+      ${c.city}, ${c.country} <span style="color:var(--color-text-faint)">${c.country_code}</span>
+    </div>`
+  ).join('');
+
+  // If nothing from DB yet, show local results as clickable
+  if (!dbResults.length) {
+    html = localFallback.length
+      ? localFallback.map(c =>
+          `<div class="dropdown-item" onclick="createAndAddLocation('${c.city.replace(/'/g,"\\'")}','${c.country.replace(/'/g,"\\'")}','${c.country_code}')">
+            ${c.city}, ${c.country} <span style="color:var(--color-text-faint)">${c.country_code}</span>
+          </div>`
+        ).join('')
+      : '';
+    // If typed something not in list, offer free-text add
+    if (!localFallback.length || !localFallback.find(c => c.city.toLowerCase() === q.toLowerCase())) {
+      html += `<div class="dropdown-item" style="color:var(--color-primary)" onclick="createAndAddLocation('${q.replace(/'/g,"\\'")}','','')">
+        ➕ Add "${q}"
+      </div>`;
+    }
+  }
+
+  if (html) {
+    dd.innerHTML = html;
+    dd.classList.add('open');
+  } else {
+    dd.classList.remove('open');
+  }
+}
+
+async function createAndAddLocation(city, country, cc) {
   try {
-    // Try to create the location via API; if it already exists API should return it
     const loc = await api('/api/locations/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ city: name, country: name, country_code: 'XX' }),
+      body: JSON.stringify({ city, country: country || city, country_code: cc || 'XX', raw_input: city }),
     });
-    addLocation(loc.id, loc.city || loc.country, loc.country_code || 'XX');
+    addLocation(loc.id, loc.city || loc.country, loc.country_code || cc || 'XX');
   } catch(e) {
-    // If POST fails, fall back to searching and picking first result
+    // If POST fails (e.g. duplicate), try searching and pick first match
     try {
-      const results = await api(`/api/locations/search?q=${encodeURIComponent(name)}`);
+      const results = await api(`/api/locations/search?q=${encodeURIComponent(city)}`);
       if (results.length) {
         const r = results[0];
         addLocation(r.id, r.city || r.country, r.country_code);
-      } else {
-        alert('Could not add location: ' + name + '. The API may need a /api/locations/ POST endpoint.');
       }
-    } catch(e2) { console.error(e2); }
+    } catch(e2) { console.error('createAndAddLocation fallback failed', e2); }
   }
   document.getElementById('location-dropdown').classList.remove('open');
   document.getElementById('location-search').value = '';
@@ -211,7 +386,7 @@ function removeLocation(id) {
 
 function renderLocationTags() {
   document.getElementById('location-tags').innerHTML = selectedLocations.map(l =>
-    `<span class="location-tag">${l.city} ${l.cc}<button onclick="removeLocation(${l.id})" title="Remove">×</button></span>`
+    `<span class="location-tag">${l.city} <span style="opacity:.6">${l.cc}</span><button onclick="removeLocation(${JSON.stringify(l.id)})" title="Remove">×</button></span>`
   ).join('');
 }
 
@@ -220,6 +395,7 @@ document.addEventListener('click', e => {
     document.getElementById('location-dropdown').classList.remove('open');
 });
 
+/* ---- SUBMIT JOB ---- */
 async function submitJob() {
   const msg = document.getElementById('job-submit-msg');
   if (!selectedLocations.length) {
@@ -379,3 +555,9 @@ async function deleteProxy(id) {
   try { await fetch(`/api/proxies/${id}`, {method:'DELETE'}); loadProxies(); }
   catch(e) { console.error(e); }
 }
+
+/* ---- INIT ---- */
+document.addEventListener('DOMContentLoaded', () => {
+  loadDashboard();
+  pollTimer = setInterval(loadDashboard, 6000);
+});
