@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     # --- Database ---
     database_url: str = "sqlite:///./b2cleads.db"
 
+    # --- PostgreSQL (used by Docker Compose to provision the DB) ---
+    postgres_db: Optional[str] = None
+    postgres_user: Optional[str] = None
+    postgres_password: Optional[str] = None
+
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
     redis_queue_scrape: str = "b2c:scrape"
@@ -17,6 +22,8 @@ class Settings(BaseSettings):
     # Run Reacher: docker run -p 8080:8080 reacherhq/backend:latest
     reacher_url: Optional[str] = None   # e.g. "http://localhost:8080"
     reacher_api_key: Optional[str] = None
+    reacher_from_email: Optional[str] = None   # HELO/From identity for SMTP probing
+    reacher_hello_name: Optional[str] = None   # EHLO hostname for SMTP probing
 
     # --- Scraping ---
     default_concurrency: int = 5
