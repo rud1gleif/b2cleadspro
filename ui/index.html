@@ -61,7 +61,7 @@
   <div id="page-dashboard" class="page active">
     <div class="page-header">
       <h1>Dashboard</h1>
-      <span class="badge badge-live" id="status-badge">Live</span>
+      <span class="badge badge-live" id="status-badge">● Live</span>
     </div>
     <div class="kpi-grid" id="kpi-grid">
       <div class="kpi-card">
@@ -79,6 +79,10 @@
       <div class="kpi-card">
         <div class="kpi-label">Active Proxies</div>
         <div class="kpi-value" id="kpi-proxies">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Queue Depth</div>
+        <div class="kpi-value" style="font-size:var(--text-sm)" id="kpi-queue">—</div>
       </div>
     </div>
 
@@ -101,7 +105,7 @@
       <div class="form-group">
         <label>Locations <span class="hint">(search & add multiple)</span></label>
         <div class="location-search-wrap">
-          <input type="text" id="location-search" placeholder="Type city, country…" oninput="searchLocations()" autocomplete="off" />
+          <input type="text" id="location-search" placeholder="Type city or country…" oninput="searchLocations()" autocomplete="off" />
           <div class="location-dropdown" id="location-dropdown"></div>
         </div>
         <div class="location-tags" id="location-tags"></div>
@@ -152,7 +156,7 @@
     </div>
 
     <div class="filter-bar">
-      <input type="text" id="filter-country" placeholder="Country code (e.g. US)" maxlength="3" />
+      <input type="text" id="filter-country" placeholder="Country code (US)" maxlength="3" />
       <input type="text" id="filter-city" placeholder="City" />
       <input type="text" id="filter-niche" placeholder="Niche" />
       <select id="filter-verified">
@@ -182,7 +186,7 @@
     </div>
 
     <div class="card form-card">
-      <h3>Add Proxy</h3>
+      <h3 style="margin-bottom:var(--space-4)">Add Proxy</h3>
       <div class="form-row">
         <div class="form-group"><label>Host</label><input type="text" id="proxy-host" placeholder="192.168.1.1" /></div>
         <div class="form-group"><label>Port</label><input type="number" id="proxy-port" placeholder="8080" /></div>

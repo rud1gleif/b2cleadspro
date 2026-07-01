@@ -4,7 +4,7 @@
 
 const API = '';
 let currentPage = 'dashboard';
-let selectedLocations = []; // [{id, city, country, country_code}]
+let selectedLocations = [];
 let leadsPage = 1;
 let pollTimer = null;
 
@@ -16,8 +16,8 @@ function showPage(name, el) {
   if (el) el.classList.add('active');
   currentPage = name;
   clearInterval(pollTimer);
-  if (name === 'dashboard') { loadDashboard(); pollTimer = setInterval(loadDashboard, 8000); }
-  if (name === 'jobs')      { loadJobs();      pollTimer = setInterval(loadJobs, 5000); }
+  if (name === 'dashboard') { loadDashboard(); pollTimer = setInterval(loadDashboard, 6000); }
+  if (name === 'jobs')      { loadJobs();      pollTimer = setInterval(loadJobs, 4000); }
   if (name === 'leads')     { loadLeads(1); }
   if (name === 'proxies')   { loadProxies(); }
 }
@@ -60,15 +60,15 @@ function num(n) {
 /* ---- DASHBOARD ---- */
 async function loadDashboard() {
   try {
-    const [leadsData, jobsData, proxiesData] = await Promise.all([
+    const [leadsData, jobsData, proxiesData, queues] = await Promise.all([
       api('/api/leads/?page=1&page_size=1'),
       api('/api/jobs/'),
       api('/api/proxies/'),
+      api('/api/queues/').catch(() => null),
     ]);
 
     document.getElementById('kpi-total-leads').textContent = num(leadsData.total);
 
-    // verified count — reuse filter
     const vData = await api('/api/leads/?is_verified=true&page=1&page_size=1');
     document.getElementById('kpi-verified').textContent = num(vData.total);
 
@@ -77,6 +77,12 @@ async function loadDashboard() {
 
     const active = proxiesData.filter(p => p.is_active).length;
     document.getElementById('kpi-proxies').textContent = num(active);
+
+    // Queue depth display
+    if (queues && !queues.error) {
+      document.getElementById('kpi-queue').textContent =
+        `D:${queues.discovery} S:${queues.scrape} V:${queues.verify}`;
+    }
 
     renderJobsTable(jobsData.slice(0, 10), 'dashboard-jobs-body', true);
   } catch(e) {
@@ -99,16 +105,16 @@ function renderJobsTable(jobs, tbodyId, compact) {
     return;
   }
   tbody.innerHTML = jobs.map(j => {
-    const locs = (j.location_ids || []).join(', ');
+    const locs   = (j.location_ids || []).join(', ');
     const niches = compact ? '' : `<td>${(j.niches || []).join(', ') || '—'}</td>`;
-    const started = compact ? '' : `<td>${fmtDate(j.started_at)}</td>`;
+    const started  = compact ? '' : `<td>${fmtDate(j.started_at)}</td>`;
     const finished = compact ? '' : `<td>${fmtDate(j.finished_at)}</td>`;
     return `<tr>
-      <td><span class="font-mono" style="font-family:var(--font-mono);color:var(--color-text-muted)">#${j.id}</span></td>
+      <td><span style="font-family:var(--font-mono);color:var(--color-text-muted)">#${j.id}</span></td>
       <td>${statusBadge(j.status)}</td>
       <td>${locs || '—'}</td>
       ${niches}
-      <td>${progressBar(j.progress)} <span style="color:var(--color-text-muted);margin-left:4px">${j.progress}%</span></td>
+      <td>${progressBar(j.progress)}<span style="color:var(--color-text-muted);margin-left:4px">${j.progress}%</span></td>
       <td>${num(j.leads_found)}</td>
       <td>${num(j.pages_crawled)}</td>
       ${started}${finished}
@@ -118,11 +124,9 @@ function renderJobsTable(jobs, tbodyId, compact) {
 }
 
 function viewJobLeads(jobId) {
-  document.getElementById('filter-country').value = '';
-  document.getElementById('filter-city').value = '';
-  document.getElementById('filter-niche').value = '';
+  ['filter-country','filter-city','filter-niche','filter-min-score'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('filter-verified').value = '';
-  document.getElementById('filter-min-score').value = '';
+  currentJobFilter = jobId;
   showPage('leads', document.querySelector('[data-page="leads"]'));
   loadLeads(1, jobId);
 }
@@ -137,7 +141,10 @@ async function searchLocations() {
   searchDebounce = setTimeout(async () => {
     try {
       const results = await api(`/api/locations/search?q=${encodeURIComponent(q)}`);
-      if (!results.length) { dd.innerHTML = '<div class="dropdown-item" style="color:var(--color-text-muted)">No results</div>'; dd.classList.add('open'); return; }
+      if (!results.length) {
+        dd.innerHTML = '<div class="dropdown-item" style="color:var(--color-text-muted)">No results — try adding it manually</div>';
+        dd.classList.add('open'); return;
+      }
       dd.innerHTML = results.map(r =>
         `<div class="dropdown-item" onclick="addLocation(${r.id},'${(r.city||r.country).replace(/'/g,"\\'")}',' ${r.country_code}')">${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span></div>`
       ).join('');
@@ -161,42 +168,37 @@ function removeLocation(id) {
 
 function renderLocationTags() {
   document.getElementById('location-tags').innerHTML = selectedLocations.map(l =>
-    `<span class="location-tag">${l.city} ${l.cc}<button onclick="removeLocation(${l.id})" title="Remove">×</button></span>`
+    `<span class="location-tag">${l.city}${l.cc}<button onclick="removeLocation(${l.id})" title="Remove">×</button></span>`
   ).join('');
 }
 
-// Close dropdown on outside click
 document.addEventListener('click', e => {
-  if (!e.target.closest('.location-search-wrap')) {
+  if (!e.target.closest('.location-search-wrap'))
     document.getElementById('location-dropdown').classList.remove('open');
-  }
 });
 
 async function submitJob() {
   const msg = document.getElementById('job-submit-msg');
   if (!selectedLocations.length) {
     msg.textContent = 'Please add at least one location.';
-    msg.className = 'form-msg error';
-    return;
+    msg.className = 'form-msg error'; return;
   }
   const payload = {
     location_ids: selectedLocations.map(l => l.id),
-    niches: document.getElementById('job-niches').value
-      .split(',').map(s => s.trim()).filter(Boolean),
-    max_pages: parseInt(document.getElementById('job-max-pages').value) || 50,
+    niches: document.getElementById('job-niches').value.split(',').map(s=>s.trim()).filter(Boolean),
+    max_pages:   parseInt(document.getElementById('job-max-pages').value)   || 50,
     concurrency: parseInt(document.getElementById('job-concurrency').value) || 5,
   };
   try {
     const job = await api('/api/jobs/', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
-    msg.textContent = `✓ Job #${job.id} launched!`;
+    msg.textContent = `✓ Job #${job.id} launched — discovery tasks queued!`;
     msg.className = 'form-msg';
-    selectedLocations = [];
-    renderLocationTags();
-    setTimeout(() => { showPage('jobs', document.querySelector('[data-page="jobs"]')); }, 1200);
+    selectedLocations = []; renderLocationTags();
+    setTimeout(() => showPage('jobs', document.querySelector('[data-page="jobs"]')), 1500);
   } catch(e) {
     msg.textContent = 'Error: ' + e.message;
     msg.className = 'form-msg error';
@@ -209,10 +211,10 @@ async function loadLeads(page = 1, jobId = null) {
   leadsPage = page;
   if (jobId !== null) currentJobFilter = jobId;
   const params = new URLSearchParams({ page, page_size: 50 });
-  const cc  = document.getElementById('filter-country').value.trim();
-  const city = document.getElementById('filter-city').value.trim();
+  const cc    = document.getElementById('filter-country').value.trim();
+  const city  = document.getElementById('filter-city').value.trim();
   const niche = document.getElementById('filter-niche').value.trim();
-  const ver  = document.getElementById('filter-verified').value;
+  const ver   = document.getElementById('filter-verified').value;
   const score = document.getElementById('filter-min-score').value;
   if (cc)    params.set('country_code', cc.toUpperCase());
   if (city)  params.set('city', city);
@@ -225,7 +227,7 @@ async function loadLeads(page = 1, jobId = null) {
     const data = await api('/api/leads/?' + params.toString());
     const tbody = document.getElementById('leads-body');
     if (!data.results.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty">No leads found. Try adjusting filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">No leads found. Try adjusting filters or run a job first.</td></tr>';
     } else {
       tbody.innerHTML = data.results.map(l => `<tr>
         <td style="font-family:var(--font-mono);color:var(--color-primary)">${l.email}</td>
@@ -234,7 +236,9 @@ async function loadLeads(page = 1, jobId = null) {
         <td>${l.country_code || '—'}</td>
         <td>${l.niche || '—'}</td>
         <td><strong>${l.score}</strong></td>
-        <td>${l.is_verified ? '<span class="badge badge-verified">✓</span>' : '<span class="badge badge-unverified">—</span>'}</td>
+        <td>${l.is_verified
+          ? '<span class="badge badge-verified">✓ Yes</span>'
+          : '<span class="badge badge-unverified">— No</span>'}</td>
         <td style="color:var(--color-text-muted);font-size:.7rem">${l.source_domain || '—'}</td>
         <td><span style="color:var(--color-text-muted)">#${l.job_id || '—'}</span></td>
       </tr>`).join('');
@@ -255,16 +259,15 @@ function renderPagination(total, page, pageSize) {
   const wrap = document.getElementById('leads-pagination');
   if (pages <= 1) { wrap.innerHTML = ''; return; }
   let html = '';
-  for (let i = 1; i <= Math.min(pages, 15); i++) {
+  for (let i = 1; i <= Math.min(pages, 15); i++)
     html += `<button class="page-btn ${i===page?'active':''}" onclick="loadLeads(${i})">${i}</button>`;
-  }
-  if (pages > 15) html += `<span style="color:var(--color-text-muted);font-size:var(--text-xs)">… ${pages} pages</span>`;
+  if (pages > 15) html += `<span style="color:var(--color-text-muted);font-size:var(--text-xs)">…${pages} pages</span>`;
   wrap.innerHTML = html;
 }
 
 function exportLeads() {
   const params = new URLSearchParams();
-  const cc = document.getElementById('filter-country').value.trim();
+  const cc  = document.getElementById('filter-country').value.trim();
   const ver = document.getElementById('filter-verified').value;
   if (cc)  params.set('country_code', cc.toUpperCase());
   if (ver) params.set('is_verified', ver);
@@ -278,7 +281,7 @@ async function loadProxies() {
     const proxies = await api('/api/proxies/');
     const tbody = document.getElementById('proxies-body');
     if (!proxies.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty">No proxies yet. Add one below.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">No proxies. Add one above.</td></tr>';
       return;
     }
     tbody.innerHTML = proxies.map(p => `<tr>
@@ -301,18 +304,22 @@ async function loadProxies() {
 async function addProxy() {
   const msg = document.getElementById('proxy-msg');
   const payload = {
-    host: document.getElementById('proxy-host').value.trim(),
-    port: parseInt(document.getElementById('proxy-port').value),
-    protocol: document.getElementById('proxy-protocol').value,
-    username: document.getElementById('proxy-username').value.trim() || null,
-    password: document.getElementById('proxy-password').value || null,
+    host:         document.getElementById('proxy-host').value.trim(),
+    port:         parseInt(document.getElementById('proxy-port').value),
+    protocol:     document.getElementById('proxy-protocol').value,
+    username:     document.getElementById('proxy-username').value.trim() || null,
+    password:     document.getElementById('proxy-password').value || null,
     country_code: document.getElementById('proxy-country').value.trim().toUpperCase() || null,
   };
   if (!payload.host || !payload.port) {
     msg.textContent = 'Host and port are required.'; msg.className = 'form-msg error'; return;
   }
   try {
-    await api('/api/proxies/', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    await api('/api/proxies/', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
     msg.textContent = '✓ Proxy added.'; msg.className = 'form-msg';
     ['proxy-host','proxy-port','proxy-username','proxy-password','proxy-country'].forEach(id => document.getElementById(id).value = '');
     loadProxies();
@@ -320,22 +327,18 @@ async function addProxy() {
 }
 
 async function checkProxy(id) {
-  try {
-    await api(`/api/proxies/${id}/check`, { method:'POST' });
-    loadProxies();
-  } catch(e) { console.error(e); }
+  try { await api(`/api/proxies/${id}/check`, {method:'POST'}); loadProxies(); }
+  catch(e) { console.error(e); }
 }
 
 async function deleteProxy(id) {
   if (!confirm('Delete this proxy?')) return;
-  try {
-    await fetch(`/api/proxies/${id}`, { method:'DELETE' });
-    loadProxies();
-  } catch(e) { console.error(e); }
+  try { await fetch(`/api/proxies/${id}`, {method:'DELETE'}); loadProxies(); }
+  catch(e) { console.error(e); }
 }
 
 /* ---- INIT ---- */
 document.addEventListener('DOMContentLoaded', () => {
   loadDashboard();
-  pollTimer = setInterval(loadDashboard, 8000);
+  pollTimer = setInterval(loadDashboard, 6000);
 });
