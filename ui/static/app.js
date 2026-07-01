@@ -78,7 +78,6 @@ async function loadDashboard() {
     const active = proxiesData.filter(p => p.is_active).length;
     document.getElementById('kpi-proxies').textContent = num(active);
 
-    // Queue depth display
     if (queues && !queues.error) {
       document.getElementById('kpi-queue').textContent =
         `D:${queues.discovery} S:${queues.scrape} V:${queues.verify}`;
@@ -131,8 +130,9 @@ function viewJobLeads(jobId) {
   loadLeads(1, jobId);
 }
 
-/* ---- NEW JOB ---- */
+/* ---- NEW JOB — LOCATION ---- */
 let searchDebounce = null;
+
 async function searchLocations() {
   const q = document.getElementById('location-search').value.trim();
   const dd = document.getElementById('location-dropdown');
@@ -141,16 +141,59 @@ async function searchLocations() {
   searchDebounce = setTimeout(async () => {
     try {
       const results = await api(`/api/locations/search?q=${encodeURIComponent(q)}`);
-      if (!results.length) {
-        dd.innerHTML = '<div class="dropdown-item" style="color:var(--color-text-muted)">No results — try adding it manually</div>';
-        dd.classList.add('open'); return;
-      }
-      dd.innerHTML = results.map(r =>
-        `<div class="dropdown-item" onclick="addLocation(${r.id},'${(r.city||r.country).replace(/'/g,"\\'")}',' ${r.country_code}')">${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span></div>`
+      let html = results.map(r =>
+        `<div class="dropdown-item" onclick="addLocation(${r.id},'${(r.city||r.country).replace(/'/g,"\\'")}','${r.country_code}')">${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span></div>`
       ).join('');
+      // Always show a "create" option at the bottom
+      html += `<div class="dropdown-item" style="border-top:1px solid var(--color-border);color:var(--color-primary)" onclick="createAndAddLocation('${q.replace(/'/g,"\\'")}')">
+        ➕ Add "${q}" as new location
+      </div>`;
+      dd.innerHTML = html;
       dd.classList.add('open');
     } catch(e) { console.error(e); }
   }, 300);
+}
+
+// Allow pressing Enter to instantly create & add the typed location
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('location-search');
+  if (input) {
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = input.value.trim();
+        if (q.length < 2) return;
+        await createAndAddLocation(q);
+      }
+    });
+  }
+  loadDashboard();
+  pollTimer = setInterval(loadDashboard, 6000);
+});
+
+async function createAndAddLocation(name) {
+  try {
+    // Try to create the location via API; if it already exists API should return it
+    const loc = await api('/api/locations/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ city: name, country: name, country_code: 'XX' }),
+    });
+    addLocation(loc.id, loc.city || loc.country, loc.country_code || 'XX');
+  } catch(e) {
+    // If POST fails, fall back to searching and picking first result
+    try {
+      const results = await api(`/api/locations/search?q=${encodeURIComponent(name)}`);
+      if (results.length) {
+        const r = results[0];
+        addLocation(r.id, r.city || r.country, r.country_code);
+      } else {
+        alert('Could not add location: ' + name + '. The API may need a /api/locations/ POST endpoint.');
+      }
+    } catch(e2) { console.error(e2); }
+  }
+  document.getElementById('location-dropdown').classList.remove('open');
+  document.getElementById('location-search').value = '';
 }
 
 function addLocation(id, city, cc) {
@@ -168,7 +211,7 @@ function removeLocation(id) {
 
 function renderLocationTags() {
   document.getElementById('location-tags').innerHTML = selectedLocations.map(l =>
-    `<span class="location-tag">${l.city}${l.cc}<button onclick="removeLocation(${l.id})" title="Remove">×</button></span>`
+    `<span class="location-tag">${l.city} ${l.cc}<button onclick="removeLocation(${l.id})" title="Remove">×</button></span>`
   ).join('');
 }
 
@@ -336,9 +379,3 @@ async function deleteProxy(id) {
   try { await fetch(`/api/proxies/${id}`, {method:'DELETE'}); loadProxies(); }
   catch(e) { console.error(e); }
 }
-
-/* ---- INIT ---- */
-document.addEventListener('DOMContentLoaded', () => {
-  loadDashboard();
-  pollTimer = setInterval(loadDashboard, 6000);
-});
