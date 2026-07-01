@@ -9,7 +9,19 @@ from app.database import Base
 import app.models  # noqa: F401 - ensure all models are imported
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+
+# Ensure the URL uses the async driver scheme required by create_async_engine.
+# alembic.ini may contain a plain postgresql:// URL; we rewrite it here.
+def _async_url(url: str) -> str:
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("sqlite:///") and "+" not in url:
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+    return url
+
+config.set_main_option("sqlalchemy.url", _async_url(settings.database_url))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
