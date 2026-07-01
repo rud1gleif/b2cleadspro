@@ -1,4 +1,4 @@
-"""Background scrape worker — orchestrates discovery + scrape + verify per SearchJob."""
+"""Background scrape worker — async, uses AsyncSessionLocal + SearchJob."""
 import asyncio
 import uuid
 from datetime import datetime, timezone
@@ -9,9 +9,7 @@ from app.models.job import SearchJob
 from app.models.email_lead import EmailLead
 from app.models.location import Location
 from app.models.page import Page
-from app.services.scraper_service import (
-    fetch_page_async, extract_emails, build_search_urls
-)
+from app.services.scraper_service import fetch_page_async, extract_emails, build_search_urls
 from app.services.playwright_service import render_page
 from app.services.sitemap_service import discover_urls_for_domain
 from app.services.verification_service import verify_email
@@ -26,7 +24,7 @@ PLAYWRIGHT_DOMAINS = {
 
 
 def run_scrape_job(job_id: str) -> None:
-    """Sync entry point called by FastAPI BackgroundTasks or queue dispatcher."""
+    """Sync entry point called by BackgroundTasks or queue dispatcher."""
     asyncio.run(_async_run(job_id))
 
 
@@ -38,11 +36,9 @@ async def _async_run(job_id: str) -> None:
         job = result.scalar_one_or_none()
         if not job or job.status == "cancelled":
             return
-
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)
         await db.commit()
-
         location_id = job.location_id
         keywords = job.keywords or []
 
@@ -100,10 +96,7 @@ async def _async_run(job_id: str) -> None:
         needs_playwright = any(d in domain for d in PLAYWRIGHT_DOMAINS)
 
         async with semaphore:
-            if needs_playwright:
-                html = await render_page(url, proxy=proxy_str)
-            else:
-                html = await fetch_page_async(url, proxy_dict)
+            html = await render_page(url, proxy=proxy_str) if needs_playwright else await fetch_page_async(url, proxy_dict)
 
         if not html:
             if proxy:
@@ -115,15 +108,9 @@ async def _async_run(job_id: str) -> None:
         pages_done += 1
 
         async with AsyncSessionLocal() as db:
-            page_rec = Page(
-                url=url,
-                job_id=job_uuid,
-                status_code=200,
-                emails_found=len(emails),
-            )
+            page_rec = Page(url=url, job_id=job_uuid, status_code=200, emails_found=len(emails))
             db.add(page_rec)
             await db.flush()
-
             for email in emails:
                 if email in seen_emails:
                     continue
@@ -145,19 +132,19 @@ async def _async_run(job_id: str) -> None:
                 )
                 db.add(lead)
                 leads_found += 1
-
             await db.commit()
 
-        progress = min(int((pages_done / max(len(seed_entries), 1)) * 100), 99)
         set_job_status(str(job_id), {
             "status": "running",
-            "progress": progress,
+            "progress": min(int((pages_done / max(len(seed_entries), 1)) * 100), 99),
             "emails_found": leads_found,
             "pages_scraped": pages_done,
         })
 
-    tasks = [process_url(u, loc, niche) for u, loc, niche in seed_entries[:max_pages]]
-    await asyncio.gather(*tasks, return_exceptions=True)
+    await asyncio.gather(
+        *[process_url(u, loc, niche) for u, loc, niche in seed_entries[:max_pages]],
+        return_exceptions=True
+    )
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(SearchJob).where(SearchJob.id == job_uuid))
@@ -169,10 +156,6 @@ async def _async_run(job_id: str) -> None:
             job.finished_at = datetime.now(timezone.utc)
             await db.commit()
 
-    set_job_status(str(job_id), {
-        "status": "done",
-        "progress": 100,
-        "emails_found": leads_found,
-        "pages_scraped": pages_done,
-    })
+    set_job_status(str(job_id), {"status": "done", "progress": 100,
+                                  "emails_found": leads_found, "pages_scraped": pages_done})
     logger.info(f"Job {job_id} complete: {leads_found} leads / {pages_done} pages.")

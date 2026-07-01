@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from typing import List
 import uuid
 
@@ -9,6 +9,14 @@ from app.models.proxy import Proxy
 from app.schemas.proxy import ProxyCreate, ProxyRead
 
 router = APIRouter()
+
+
+@router.get("/count", summary="Count active proxies")
+async def count_proxies(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(func.count(Proxy.id)).where(Proxy.active == True)
+    )
+    return {"active": result.scalar(), "total": (await db.execute(select(func.count(Proxy.id)))).scalar()}
 
 
 @router.get("/", response_model=List[ProxyRead])
