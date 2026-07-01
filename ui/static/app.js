@@ -109,10 +109,10 @@ const CITIES = [
   {city:'Mexico City',country:'Mexico',country_code:'MX'},
   {city:'Guadalajara',country:'Mexico',country_code:'MX'},
   {city:'Monterrey',country:'Mexico',country_code:'MX'},
-  {city:'São Paulo',country:'Brazil',country_code:'BR'},
+  {city:'Sao Paulo',country:'Brazil',country_code:'BR'},
   {city:'Rio de Janeiro',country:'Brazil',country_code:'BR'},
   {city:'Buenos Aires',country:'Argentina',country_code:'AR'},
-  {city:'Bogotá',country:'Colombia',country_code:'CO'},
+  {city:'Bogota',country:'Colombia',country_code:'CO'},
   {city:'Santiago',country:'Chile',country_code:'CL'},
   {city:'Lima',country:'Peru',country_code:'PE'},
   {city:'Dubai',country:'UAE',country_code:'AE'},
@@ -194,7 +194,21 @@ function statusBadge(s) {
 }
 
 function progressBar(pct) {
-  return `<div class="progress-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>`;
+  const p = isNaN(pct) ? 0 : Math.min(100, Math.max(0, pct));
+  return `<div class="progress-wrap"><div class="progress-bar" style="width:${p}%"></div></div>`;
+}
+
+// Compute progress % from pages_scraped / pages_discovered
+function jobProgress(j) {
+  if (!j.pages_discovered || j.pages_discovered === 0) {
+    return j.status === 'done' ? 100 : 0;
+  }
+  return Math.round((j.pages_scraped / j.pages_discovered) * 100);
+}
+
+// Short UUID display
+function shortId(id) {
+  return id ? String(id).slice(0, 8) : '—';
 }
 
 function fmtDate(d) {
@@ -210,17 +224,17 @@ function num(n) {
 /* ---- DASHBOARD ---- */
 async function loadDashboard() {
   try {
-    const [leadsData, jobsData, proxiesData, queues] = await Promise.all([
-      api('/api/leads/?page=1&page_size=1'),
+    const [jobsData, proxiesData, queues] = await Promise.all([
       api('/api/jobs/'),
       api('/api/proxies/'),
       api('/api/queues/').catch(() => null),
     ]);
 
-    document.getElementById('kpi-total-leads').textContent = num(leadsData.total);
-
-    const vData = await api('/api/leads/?is_verified=true&page=1&page_size=1');
-    document.getElementById('kpi-verified').textContent = num(vData.total);
+    // Total emails found across all jobs
+    const totalLeads = jobsData.reduce((s, j) => s + (j.emails_found || 0), 0);
+    const verifiedLeads = jobsData.reduce((s, j) => s + (j.emails_verified || 0), 0);
+    document.getElementById('kpi-total-leads').textContent = num(totalLeads);
+    document.getElementById('kpi-verified').textContent = num(verifiedLeads);
 
     const running = jobsData.filter(j => j.status === 'running' || j.status === 'pending').length;
     document.getElementById('kpi-active-jobs').textContent = num(running);
@@ -229,8 +243,10 @@ async function loadDashboard() {
     document.getElementById('kpi-proxies').textContent = num(active);
 
     if (queues && !queues.error) {
-      document.getElementById('kpi-queue').textContent =
-        `D:${queues.discovery} S:${queues.scrape} V:${queues.verify}`;
+      const d = queues.discovery_queue ?? queues.discovery ?? '—';
+      const s = queues.scrape_queue   ?? queues.scrape   ?? '—';
+      const v = queues.verify_queue   ?? queues.verify   ?? '—';
+      document.getElementById('kpi-queue').textContent = `D:${d} S:${s} V:${v}`;
     }
 
     renderJobsTable(jobsData.slice(0, 10), 'dashboard-jobs-body', true);
@@ -249,25 +265,26 @@ async function loadJobs() {
 
 function renderJobsTable(jobs, tbodyId, compact) {
   const tbody = document.getElementById(tbodyId);
-  if (!jobs.length) {
-    tbody.innerHTML = `<tr><td colspan="${compact?8:10}" class="empty">No jobs yet. Launch one from New Job.</td></tr>`;
+  if (!jobs || !jobs.length) {
+    tbody.innerHTML = `<tr><td colspan="${compact?7:9}" class="empty">No jobs yet. Launch one from New Job.</td></tr>`;
     return;
   }
   tbody.innerHTML = jobs.map(j => {
-    const locs   = (j.location_ids || []).join(', ');
-    const niches = compact ? '' : `<td>${(j.niches || []).join(', ') || '—'}</td>`;
+    const pct      = jobProgress(j);
+    const keywords = compact ? '' : `<td>${(j.keywords || []).join(', ') || '—'}</td>`;
     const started  = compact ? '' : `<td>${fmtDate(j.started_at)}</td>`;
     const finished = compact ? '' : `<td>${fmtDate(j.finished_at)}</td>`;
+    const jid      = String(j.id);
     return `<tr>
-      <td><span style="font-family:var(--font-mono);color:var(--color-text-muted)">#${j.id}</span></td>
+      <td><span style="font-family:var(--font-mono);color:var(--color-text-muted)" title="${jid}">#${shortId(jid)}</span></td>
       <td>${statusBadge(j.status)}</td>
-      <td>${locs || '—'}</td>
-      ${niches}
-      <td>${progressBar(j.progress)}<span style="color:var(--color-text-muted);margin-left:4px">${j.progress}%</span></td>
-      <td>${num(j.leads_found)}</td>
-      <td>${num(j.pages_crawled)}</td>
+      <td>${j.location_id ? shortId(String(j.location_id)) : '—'}</td>
+      ${keywords}
+      <td>${progressBar(pct)}<span style="color:var(--color-text-muted);margin-left:4px">${pct}%</span></td>
+      <td>${num(j.emails_found)}</td>
+      <td>${num(j.pages_scraped)}</td>
       ${started}${finished}
-      <td><button class="btn btn-sm btn-ghost" onclick="viewJobLeads(${j.id})">Leads</button></td>
+      <td><button class="btn btn-sm btn-ghost" onclick="viewJobLeads('${jid}')">Leads</button></td>
     </tr>`;
   }).join('');
 }
@@ -289,20 +306,17 @@ async function searchLocations() {
   clearTimeout(searchDebounce);
   if (q.length < 1) { dd.classList.remove('open'); return; }
 
-  // 1. Instantly show built-in matches
   const local = searchCities(q);
-  renderDropdown(dd, local, q);
+  renderDropdown(dd, [], q, local);
 
-  // 2. Also query the DB asynchronously and merge results
   if (q.length >= 2) {
     searchDebounce = setTimeout(async () => {
       try {
         const dbResults = await api(`/api/locations/search?q=${encodeURIComponent(q)}`);
-        // Merge: DB results first (they have real IDs), then built-in not already shown
         const dbCities = new Set(dbResults.map(r => (r.city || r.country).toLowerCase()));
         const extra = local.filter(c => !dbCities.has(c.city.toLowerCase()));
         renderDropdown(dd, dbResults, q, extra);
-      } catch(e) { /* keep showing local results */ }
+      } catch(e) { /* keep local */ }
     }, 300);
   }
 }
@@ -310,35 +324,22 @@ async function searchLocations() {
 function renderDropdown(dd, dbResults, q, localFallback = []) {
   let html = '';
 
-  // DB results (real IDs — can be selected directly)
   html += dbResults.map(r =>
     `<div class="dropdown-item" onclick="addLocation(${JSON.stringify(r.id)},'${(r.city||r.country).replace(/'/g,"\\'")}','${r.country_code}')">
       ${r.city ? r.city + ', ' : ''}${r.country} <span style="color:var(--color-text-faint)">${r.country_code}</span>
     </div>`
   ).join('');
 
-  // Built-in cities not already in DB (will POST to create)
   html += localFallback.map(c =>
     `<div class="dropdown-item" onclick="createAndAddLocation('${c.city.replace(/'/g,"\\'")}','${c.country.replace(/'/g,"\\'")}','${c.country_code}')">
       ${c.city}, ${c.country} <span style="color:var(--color-text-faint)">${c.country_code}</span>
     </div>`
   ).join('');
 
-  // If nothing from DB yet, show local results as clickable
-  if (!dbResults.length) {
-    html = localFallback.length
-      ? localFallback.map(c =>
-          `<div class="dropdown-item" onclick="createAndAddLocation('${c.city.replace(/'/g,"\\'")}','${c.country.replace(/'/g,"\\'")}','${c.country_code}')">
-            ${c.city}, ${c.country} <span style="color:var(--color-text-faint)">${c.country_code}</span>
-          </div>`
-        ).join('')
-      : '';
-    // If typed something not in list, offer free-text add
-    if (!localFallback.length || !localFallback.find(c => c.city.toLowerCase() === q.toLowerCase())) {
-      html += `<div class="dropdown-item" style="color:var(--color-primary)" onclick="createAndAddLocation('${q.replace(/'/g,"\\'")}','','')">
-        ➕ Add "${q}"
-      </div>`;
-    }
+  if (!dbResults.length && !localFallback.length) {
+    html += `<div class="dropdown-item" style="color:var(--color-primary)" onclick="createAndAddLocation('${q.replace(/'/g,"\\'")}','','')">
+      ➕ Add "${q}"
+    </div>`;
   }
 
   if (html) {
@@ -358,14 +359,10 @@ async function createAndAddLocation(city, country, cc) {
     });
     addLocation(loc.id, loc.city || loc.country, loc.country_code || cc || 'XX');
   } catch(e) {
-    // If POST fails (e.g. duplicate), try searching and pick first match
     try {
       const results = await api(`/api/locations/search?q=${encodeURIComponent(city)}`);
-      if (results.length) {
-        const r = results[0];
-        addLocation(r.id, r.city || r.country, r.country_code);
-      }
-    } catch(e2) { console.error('createAndAddLocation fallback failed', e2); }
+      if (results.length) addLocation(results[0].id, results[0].city || results[0].country, results[0].country_code);
+    } catch(e2) { console.error('createAndAddLocation failed', e2); }
   }
   document.getElementById('location-dropdown').classList.remove('open');
   document.getElementById('location-search').value = '';
@@ -395,26 +392,34 @@ document.addEventListener('click', e => {
     document.getElementById('location-dropdown').classList.remove('open');
 });
 
-/* ---- SUBMIT JOB ---- */
+/* ---- SUBMIT JOB ----
+   Backend JobCreate expects: location_id (UUID), keywords (list), source_types (list), proxy_mode (str)
+   We use the FIRST selected location as location_id; niches become keywords.
+---- */
 async function submitJob() {
   const msg = document.getElementById('job-submit-msg');
   if (!selectedLocations.length) {
     msg.textContent = 'Please add at least one location.';
     msg.className = 'form-msg error'; return;
   }
+  const nichesRaw = document.getElementById('job-niches').value;
+  const keywords  = nichesRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Backend only supports single location_id — use first selected
   const payload = {
-    location_ids: selectedLocations.map(l => l.id),
-    niches: document.getElementById('job-niches').value.split(',').map(s=>s.trim()).filter(Boolean),
-    max_pages:   parseInt(document.getElementById('job-max-pages').value)   || 50,
-    concurrency: parseInt(document.getElementById('job-concurrency').value) || 5,
+    location_id:  selectedLocations[0].id,
+    keywords:     keywords.length ? keywords : null,
+    source_types: null,
+    proxy_mode:   'rotating_residential',
   };
+
   try {
     const job = await api('/api/jobs/', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
-    msg.textContent = `✓ Job #${job.id} launched — discovery tasks queued!`;
+    msg.textContent = `✓ Job #${shortId(String(job.id))} launched!`;
     msg.className = 'form-msg';
     selectedLocations = []; renderLocationTags();
     setTimeout(() => showPage('jobs', document.querySelector('[data-page="jobs"]')), 1500);
@@ -445,8 +450,8 @@ async function loadLeads(page = 1, jobId = null) {
   try {
     const data = await api('/api/leads/?' + params.toString());
     const tbody = document.getElementById('leads-body');
-    if (!data.results.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty">No leads found. Try adjusting filters or run a job first.</td></tr>';
+    if (!data.results || !data.results.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">No leads found. Run a job first.</td></tr>';
     } else {
       tbody.innerHTML = data.results.map(l => `<tr>
         <td style="font-family:var(--font-mono);color:var(--color-primary)">${l.email}</td>
@@ -454,12 +459,12 @@ async function loadLeads(page = 1, jobId = null) {
         <td>${l.city || '—'}</td>
         <td>${l.country_code || '—'}</td>
         <td>${l.niche || '—'}</td>
-        <td><strong>${l.score}</strong></td>
+        <td><strong>${l.score ?? '—'}</strong></td>
         <td>${l.is_verified
-          ? '<span class="badge badge-verified">✓ Yes</span>'
-          : '<span class="badge badge-unverified">— No</span>'}</td>
+          ? '<span class="badge badge-done">✓ Yes</span>'
+          : '<span class="badge badge-failed">— No</span>'}</td>
         <td style="color:var(--color-text-muted);font-size:.7rem">${l.source_domain || '—'}</td>
-        <td><span style="color:var(--color-text-muted)">#${l.job_id || '—'}</span></td>
+        <td><span style="color:var(--color-text-muted)">${shortId(String(l.job_id || ''))}</span></td>
       </tr>`).join('');
     }
     renderPagination(data.total, page, 50);
@@ -513,8 +518,8 @@ async function loadProxies() {
       <td>${p.fail_count}</td>
       <td>${fmtDate(p.last_checked_at)}</td>
       <td style="display:flex;gap:4px">
-        <button class="btn btn-sm btn-ghost" onclick="checkProxy(${p.id})">Check</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteProxy(${p.id})">✕</button>
+        <button class="btn btn-sm btn-ghost" onclick="checkProxy('${p.id}')">Check</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProxy('${p.id}')">✕</button>
       </td>
     </tr>`).join('');
   } catch(e) { console.error(e); }
