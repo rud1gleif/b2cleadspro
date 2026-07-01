@@ -18,7 +18,7 @@ BLOCKED_DOMAINS = {
 SEED_TEMPLATES = [
     "site:{domain} email contact",
     '"{city}" "@gmail.com" OR "@yahoo.com" OR "@hotmail.com" contact',
-    '"{city}" "{niche}" email contact",
+    '"{city}" "{niche}" email contact',
 ]
 
 
