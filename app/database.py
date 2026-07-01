@@ -4,13 +4,31 @@ from app.config import settings
 from loguru import logger
 
 
-engine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-)
+def _build_engine():
+    url = settings.database_url
+    is_sqlite = url.startswith("sqlite")
+
+    # Ensure async scheme:
+    #   postgresql://  -> postgresql+asyncpg://
+    #   sqlite:///     -> sqlite+aiosqlite:///
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("sqlite:///") and "+" not in url:
+        url = url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+
+    kwargs = dict(echo=settings.debug)
+    if not is_sqlite:
+        # pool_size / max_overflow are not supported by aiosqlite
+        kwargs["pool_size"] = 10
+        kwargs["max_overflow"] = 20
+        kwargs["pool_pre_ping"] = True
+
+    return create_async_engine(url, **kwargs)
+
+
+engine = _build_engine()
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
