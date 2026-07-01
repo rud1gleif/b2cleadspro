@@ -1,213 +1,178 @@
-"""Background scrape worker — orchestrates discovery + scrape + verify per job."""
+"""Background scrape worker — orchestrates discovery + scrape + verify per SearchJob."""
 import asyncio
-import json
+import uuid
 from datetime import datetime, timezone
 from loguru import logger
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app.models.job import Job
+from sqlalchemy import select
+from app.database import AsyncSessionLocal
+from app.models.job import SearchJob
 from app.models.email_lead import EmailLead
 from app.models.location import Location
 from app.models.page import Page
 from app.services.scraper_service import (
-    fetch_page_async, extract_emails, extract_links, build_search_urls
+    fetch_page_async, extract_emails, build_search_urls
 )
 from app.services.playwright_service import render_page
 from app.services.sitemap_service import discover_urls_for_domain
 from app.services.verification_service import verify_email
 from app.services.proxy_service import get_best_proxy, build_proxy_dict, rotate_on_failure
-from app.services.queue_service import enqueue_job, set_job_status
+from app.services.queue_service import set_job_status
 from app.config import settings
 
-# JS-heavy domains that need Playwright rendering
 PLAYWRIGHT_DOMAINS = {
     "yelp.com", "yellowpages.com", "hotfrog.com", "foursquare.com",
     "thumbtack.com", "bark.com", "houzz.com", "angieslist.com",
 }
 
 
-def run_scrape_job(job_id: int) -> None:
-    """Entry point called by FastAPI BackgroundTasks or queue dispatcher."""
+def run_scrape_job(job_id: str) -> None:
+    """Sync entry point called by FastAPI BackgroundTasks or queue dispatcher."""
     asyncio.run(_async_run(job_id))
 
 
-async def _async_run(job_id: int) -> None:
-    db: Session = SessionLocal()
-    try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+async def _async_run(job_id: str) -> None:
+    job_uuid = uuid.UUID(str(job_id))
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(SearchJob).where(SearchJob.id == job_uuid))
+        job = result.scalar_one_or_none()
         if not job or job.status == "cancelled":
             return
 
         job.status = "running"
         job.started_at = datetime.now(timezone.utc)
-        db.commit()
-        set_job_status(job_id, {"status": "running", "progress": 0})
+        await db.commit()
 
-        location_ids = json.loads(job.location_ids) if isinstance(job.location_ids, str) else job.location_ids
-        niches = json.loads(job.niches) if isinstance(job.niches, str) else (job.niches or [])
-        locations = db.query(Location).filter(Location.id.in_(location_ids)).all()
+        location_id = job.location_id
+        keywords = job.keywords or []
 
-        if not locations:
-            _fail_job(job, db, "No valid locations found")
-            return
+    set_job_status(str(job_id), {"status": "running", "progress": 0})
 
-        # Collect all already-seen emails to avoid duplicates
-        seen_emails: set = set(
-            r[0] for r in db.query(EmailLead.email).all()
+    async with AsyncSessionLocal() as db:
+        loc_result = await db.execute(select(Location).where(Location.id == location_id))
+        location = loc_result.scalar_one_or_none()
+
+    if not location:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(SearchJob).where(SearchJob.id == job_uuid))
+            job = result.scalar_one_or_none()
+            if job:
+                job.status = "failed"
+                job.error_message = "No valid location found"
+                job.finished_at = datetime.now(timezone.utc)
+                await db.commit()
+        set_job_status(str(job_id), {"status": "failed", "error": "No valid location found"})
+        return
+
+    async with AsyncSessionLocal() as db:
+        seen_result = await db.execute(select(EmailLead.email))
+        seen_emails: set = set(seen_result.scalars().all())
+
+    seed_entries = []
+    for kw in (keywords if keywords else [None]):
+        urls = build_search_urls(
+            city=location.city or location.country,
+            country=location.country,
+            niche=kw,
         )
+        seed_entries.extend([(u, location, kw) for u in urls])
 
-        # Phase A: build seed URLs per location + niche
-        seed_entries = []  # list of (url, loc, niche)
-        for loc in locations:
-            for niche in (niches if niches else [None]):
-                urls = build_search_urls(
-                    city=loc.city or loc.country,
-                    country=loc.country,
-                    niche=niche,
-                )
-                seed_entries.extend([(u, loc, niche) for u in urls])
+    max_pages = 50
+    semaphore = asyncio.Semaphore(5)
+    pages_done = 0
+    leads_found = 0
 
-        max_pages = job.max_pages or 50
-        concurrency = min(job.concurrency or 5, 10)
-        semaphore = asyncio.Semaphore(concurrency)
-        pages_done = 0
-        leads_found = 0
+    async def process_url(url: str, loc: Location, niche):
+        nonlocal pages_done, leads_found
 
-        async def process_url(url: str, loc: Location, niche):
-            nonlocal pages_done, leads_found
-
-            # Re-check cancellation
-            fresh_job = db.query(Job).filter(Job.id == job_id).first()
+        async with AsyncSessionLocal() as db:
+            r = await db.execute(select(SearchJob).where(SearchJob.id == job_uuid))
+            fresh_job = r.scalar_one_or_none()
             if fresh_job and fresh_job.status == "cancelled":
                 return
 
-            proxy = get_best_proxy(db, loc.country_code)
-            proxy_dict = build_proxy_dict(proxy)
-            proxy_str = proxy_dict.get("http") if proxy_dict else None
+        async with AsyncSessionLocal() as db:
+            proxy = await get_best_proxy(db, loc.country_code)
+        proxy_dict = build_proxy_dict(proxy)
+        proxy_str = proxy_dict.get("http") if proxy_dict else None
 
-            # Choose renderer based on domain
-            domain = url.split("/")[2] if "//" in url else ""
-            needs_playwright = any(d in domain for d in PLAYWRIGHT_DOMAINS)
+        domain = url.split("/")[2] if "//" in url else ""
+        needs_playwright = any(d in domain for d in PLAYWRIGHT_DOMAINS)
 
-            async with semaphore:
-                if needs_playwright:
-                    html = await render_page(url, proxy=proxy_str)
-                else:
-                    html = await fetch_page_async(url, proxy_dict)
+        async with semaphore:
+            if needs_playwright:
+                html = await render_page(url, proxy=proxy_str)
+            else:
+                html = await fetch_page_async(url, proxy_dict)
 
-            if not html:
-                rotate_on_failure(proxy, db)
-                return
+        if not html:
+            if proxy:
+                async with AsyncSessionLocal() as db:
+                    await rotate_on_failure(proxy, db)
+            return
 
-            emails = extract_emails(html)
-            pages_done += 1
+        emails = extract_emails(html)
+        pages_done += 1
 
-            # Persist page record
+        async with AsyncSessionLocal() as db:
             page_rec = Page(
                 url=url,
-                job_id=job_id,
+                job_id=job_uuid,
                 status_code=200,
                 emails_found=len(emails),
             )
             db.add(page_rec)
+            await db.flush()
 
             for email in emails:
                 if email in seen_emails:
                     continue
                 seen_emails.add(email)
-                vr = verify_email(email)
+                try:
+                    vr = verify_email(email)
+                except Exception:
+                    vr = {"score": 0.0}
                 lead = EmailLead(
                     email=email,
                     city=loc.city,
                     region=loc.region,
                     country=loc.country,
                     country_code=loc.country_code,
-                    niche=niche,
                     source_url=url,
-                    source_domain=domain or None,
-                    is_verified=vr["mx_ok"],
-                    is_disposable=vr["is_disposable"],
-                    mx_valid=vr["mx_ok"],
-                    score=vr["score"],
-                    job_id=job_id,
+                    source_page_id=page_rec.id,
+                    lead_score=float(vr.get("score", 0.0)),
+                    scraped_at=datetime.now(timezone.utc),
                 )
                 db.add(lead)
                 leads_found += 1
 
-            db.commit()
+            await db.commit()
 
-            # Update progress
-            total_expected = max(len(seed_entries), 1)
-            progress = min(int((pages_done / total_expected) * 100), 99)
-            job.progress = progress
-            job.leads_found = leads_found
-            job.pages_crawled = pages_done
-            db.commit()
-            set_job_status(job_id, {
-                "status": "running",
-                "progress": progress,
-                "leads_found": leads_found,
-                "pages_crawled": pages_done,
-            })
-
-        # Phase B: run seed URLs
-        tasks = [process_url(u, loc, niche) for u, loc, niche in seed_entries[:max_pages]]
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Phase C: deep-crawl discovered domains via sitemap if budget remains
-        remaining = max_pages - pages_done
-        if remaining > 5:
-            discovered_domains = set()
-            for u, loc, niche in seed_entries:
-                domain = u.split("/")[2] if "//" in u else ""
-                if domain:
-                    discovered_domains.add((domain, loc, niche))
-
-            for domain, loc, niche in list(discovered_domains)[:5]:
-                proxy = get_best_proxy(db, loc.country_code)
-                proxy_dict = build_proxy_dict(proxy)
-                try:
-                    deep_urls = await discover_urls_for_domain(
-                        domain, proxy_dict, max_urls=min(remaining, 40)
-                    )
-                    deep_tasks = [
-                        process_url(du, loc, niche)
-                        for du in deep_urls[:remaining]
-                    ]
-                    await asyncio.gather(*deep_tasks, return_exceptions=True)
-                except Exception as e:
-                    logger.debug(f"Deep crawl error for {domain}: {e}")
-
-        # Done
-        job.status = "done"
-        job.progress = 100
-        job.leads_found = leads_found
-        job.pages_crawled = pages_done
-        job.finished_at = datetime.now(timezone.utc)
-        db.commit()
-        set_job_status(job_id, {
-            "status": "done",
-            "progress": 100,
-            "leads_found": leads_found,
-            "pages_crawled": pages_done,
+        progress = min(int((pages_done / max(len(seed_entries), 1)) * 100), 99)
+        set_job_status(str(job_id), {
+            "status": "running",
+            "progress": progress,
+            "emails_found": leads_found,
+            "pages_scraped": pages_done,
         })
-        logger.info(f"Job {job_id} complete: {leads_found} leads / {pages_done} pages.")
 
-    except Exception as exc:
-        logger.exception(f"Job {job_id} crashed: {exc}")
-        try:
-            job = db.query(Job).filter(Job.id == job_id).first()
-            if job:
-                _fail_job(job, db, str(exc))
-        except Exception:
-            pass
-    finally:
-        db.close()
+    tasks = [process_url(u, loc, niche) for u, loc, niche in seed_entries[:max_pages]]
+    await asyncio.gather(*tasks, return_exceptions=True)
 
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(SearchJob).where(SearchJob.id == job_uuid))
+        job = result.scalar_one_or_none()
+        if job:
+            job.status = "done"
+            job.pages_scraped = pages_done
+            job.emails_found = leads_found
+            job.finished_at = datetime.now(timezone.utc)
+            await db.commit()
 
-def _fail_job(job: Job, db: Session, msg: str) -> None:
-    job.status = "failed"
-    job.error_message = msg
-    job.finished_at = datetime.now(timezone.utc)
-    db.commit()
-    set_job_status(job.id, {"status": "failed", "error": msg})
+    set_job_status(str(job_id), {
+        "status": "done",
+        "progress": 100,
+        "emails_found": leads_found,
+        "pages_scraped": pages_done,
+    })
+    logger.info(f"Job {job_id} complete: {leads_found} leads / {pages_done} pages.")
