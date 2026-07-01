@@ -1,0 +1,142 @@
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-b2cleadspro}
+      POSTGRES_USER: ${POSTGRES_USER:-b2c}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-b2c}"] 
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI app ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Discovery worker ──────────────────────────────────────────────────────
+  worker-discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    command: python -m app.workers.discovery
+
+  # ── Scrape worker ─────────────────────────────────────────────────────────
+  worker-scrape:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - ./data:/app/data
+    command: python -m app.workers.scrape
+
+  # ── Verify worker ─────────────────────────────────────────────────────────
+  worker-verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: python -m app.workers.verify
+
+  # ── Score worker ──────────────────────────────────────────────────────────
+  worker-score:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: python -m app.workers.score
+
+  # ── Reacher (email verifier) ──────────────────────────────────────────────
+  reacher:
+    image: reacherhq/backend:latest
+    restart: unless-stopped
+    environment:
+      RCH_HTTP_CONCURRENCY: 10
+    ports:
+      - "8080:8080"
+
+  # ── Rota (proxy router) ───────────────────────────────────────────────────
+  rota:
+    image: alpkeskin/rota:latest
+    restart: unless-stopped
+    ports:
+      - "9090:8000"
+    volumes:
+      - ./rota.yml:/app/config/config.yml
+
+volumes:
+  postgres_data:
+  redis_data:
