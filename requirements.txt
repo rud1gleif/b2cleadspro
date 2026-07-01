@@ -1,35 +1,37 @@
-# ─── Web framework ───────────────────────────────────────────────────────────
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-python-multipart==0.0.9
+# Web framework
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
 
-# ─── Database ────────────────────────────────────────────────────────────────
-sqlalchemy[asyncio]==2.0.30
-asyncpg==0.29.0
-alembic==1.13.1
-psycopg2-binary==2.9.9
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.13.0
 
-# ─── Redis / queues ──────────────────────────────────────────────────────────
-redis[hiredis]==5.0.4
-arq==0.26.1
+# HTTP client
+httpx>=0.27.0
 
-# ─── Scraping ────────────────────────────────────────────────────────────────
-playwright==1.44.0
-httpx==0.27.0
-beautifulsoup4==4.12.3
-lxml==5.2.2
-firecrawl-py==1.2.0
+# HTML parsing
+beautifulsoup4>=4.12.0
+lxml>=5.2.0
 
-# ─── Data ────────────────────────────────────────────────────────────────────
-pandas==2.2.2
-pydantic==2.7.1
-pydantic-settings==2.2.1
+# Browser automation (JS-heavy scraping)
+playwright>=1.44.0
 
-# ─── Utils ───────────────────────────────────────────────────────────────────
-python-dotenv==1.0.1
-loguru==0.7.2
-tenacity==8.3.0
-tld==0.13
-pyaml==6.0.1
-phonenumbers==8.13.37
-email-validator==2.1.1
+# DNS resolution (MX record check)
+dnspython>=2.6.0
+
+# Redis queue
+redis>=5.0.0
+
+# Logging
+loguru>=0.7.0
+
+# Async
+aiohttp>=3.9.0
+
+# Email validation
+email-validator>=2.1.0
+
+# Optional: world cities dataset for location search
+# pip install world-cities-cli  (or use bundled data)

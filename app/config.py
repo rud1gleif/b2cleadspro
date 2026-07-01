@@ -1,58 +1,42 @@
+"""Application settings loaded from environment variables / .env file."""
 from pydantic_settings import BaseSettings
-from functools import lru_cache
 from typing import Optional
 
 
 class Settings(BaseSettings):
-    # App
-    app_env: str = "development"
-    secret_key: str = "changeme"
-    debug: bool = True
+    # --- Database ---
+    database_url: str = "sqlite:///./b2cleads.db"
 
-    # Database
-    database_url: str = "postgresql+asyncpg://b2c:changeme@localhost:5432/b2cleadspro"
-
-    # Redis
+    # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
-    redis_queue_discovery: str = "queue:discovery"
-    redis_queue_scrape: str = "queue:scrape"
-    redis_queue_verify: str = "queue:verify"
-    redis_queue_score: str = "queue:score"
+    redis_queue_scrape: str = "b2c:scrape"
+    redis_queue_verify: str = "b2c:verify"
+    redis_queue_discovery: str = "b2c:discovery"
 
-    # Firecrawl
-    firecrawl_api_url: str = "http://firecrawl:3002"
-    firecrawl_api_key: Optional[str] = None
-
-    # Reacher
-    reacher_url: str = "http://reacher:8080"
+    # --- Reacher SMTP Verification (self-hosted) ---
+    # Run Reacher: docker run -p 8080:8080 reacherhq/backend:latest
+    reacher_url: Optional[str] = None   # e.g. "http://localhost:8080"
     reacher_api_key: Optional[str] = None
 
-    # Rota
-    rota_url: str = "http://rota:8000"
-    rota_api_key: Optional[str] = None
+    # --- Scraping ---
+    default_concurrency: int = 5
+    default_max_pages: int = 50
+    request_timeout: int = 20
+    user_agent: str = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
 
-    # Scraper
-    scraper_concurrency: int = 5
-    scraper_default_timeout: int = 30
-    scraper_retry_limit: int = 3
-    scraper_delay_min: float = 1.0
-    scraper_delay_max: float = 4.0
-
-    # Playwright
-    playwright_headless: bool = True
-    playwright_browser: str = "chromium"
-
-    # Cities DB
-    cities_db_path: str = "./data/cities.db"
+    # --- App ---
+    debug: bool = False
+    log_level: str = "INFO"
+    secret_key: str = "change-me-in-production-please"
 
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
         case_sensitive = False
 
 
-@lru_cache()
-def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+settings = Settings()
