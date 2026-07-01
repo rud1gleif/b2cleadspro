@@ -1,10 +1,11 @@
-"""System stats endpoint — queue depths, lead counts by country, job summaries."""
+"""System stats — queue depths, lead counts, job summaries."""
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+
 from app.database import get_db
 from app.models.email_lead import EmailLead
-from app.models.job import Job
+from app.models.job import SearchJob
 from app.models.proxy import Proxy
 from app.services.queue_service import queue_length
 from app.config import settings
@@ -13,18 +14,24 @@ router = APIRouter()
 
 
 @router.get("/overview", summary="High-level system stats")
-def overview(db: Session = Depends(get_db)):
-    total_leads = db.query(func.count(EmailLead.id)).scalar()
-    verified_leads = db.query(func.count(EmailLead.id)).filter(EmailLead.is_verified == True).scalar()
-    total_jobs = db.query(func.count(Job.id)).scalar()
-    running_jobs = db.query(func.count(Job.id)).filter(Job.status == "running").scalar()
-    active_proxies = db.query(func.count(Proxy.id)).filter(Proxy.is_active == True).scalar()
+async def overview(db: AsyncSession = Depends(get_db)):
+    total_leads = (await db.execute(select(func.count(EmailLead.id)))).scalar()
+    suppressed = (await db.execute(
+        select(func.count(EmailLead.id)).where(EmailLead.is_suppressed == True)
+    )).scalar()
+    total_jobs = (await db.execute(select(func.count(SearchJob.id)))).scalar()
+    running_jobs = (await db.execute(
+        select(func.count(SearchJob.id)).where(SearchJob.status == "running")
+    )).scalar()
+    active_proxies = (await db.execute(
+        select(func.count(Proxy.id)).where(Proxy.active == True)
+    )).scalar()
 
     return {
         "leads": {
             "total": total_leads,
-            "verified": verified_leads,
-            "unverified": total_leads - verified_leads,
+            "active": total_leads - suppressed,
+            "suppressed": suppressed,
         },
         "jobs": {
             "total": total_jobs,
@@ -42,25 +49,11 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.get("/leads-by-country", summary="Lead count grouped by country")
-def leads_by_country(db: Session = Depends(get_db)):
-    rows = (
-        db.query(EmailLead.country_code, func.count(EmailLead.id).label("count"))
+async def leads_by_country(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(EmailLead.country_code, func.count(EmailLead.id).label("count"))
         .group_by(EmailLead.country_code)
         .order_by(func.count(EmailLead.id).desc())
         .limit(50)
-        .all()
     )
-    return [{"country_code": r.country_code, "count": r.count} for r in rows]
-
-
-@router.get("/leads-by-niche", summary="Lead count grouped by niche")
-def leads_by_niche(db: Session = Depends(get_db)):
-    rows = (
-        db.query(EmailLead.niche, func.count(EmailLead.id).label("count"))
-        .filter(EmailLead.niche != None)
-        .group_by(EmailLead.niche)
-        .order_by(func.count(EmailLead.id).desc())
-        .limit(30)
-        .all()
-    )
-    return [{"niche": r.niche, "count": r.count} for r in rows]
+    return [{"country_code": r.country_code, "count": r.count} for r in result]

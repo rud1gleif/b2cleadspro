@@ -1,78 +1,81 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from typing import Optional, List
-from app.database import get_db
-from app.models.email_lead import EmailLead
-from app.schemas.lead import LeadRead, LeadFilter
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from typing import Optional
 import csv
 import io
+import uuid
+
+from app.database import get_db
+from app.models.email_lead import EmailLead
+from app.schemas.lead import LeadRead
 
 router = APIRouter()
 
 
 @router.get("/", response_model=dict)
-def list_leads(
+async def list_leads(
     country_code: Optional[str] = None,
     city: Optional[str] = None,
-    niche: Optional[str] = None,
-    is_verified: Optional[bool] = None,
-    min_score: Optional[int] = None,
-    job_id: Optional[int] = None,
+    is_suppressed: Optional[bool] = False,
+    min_score: Optional[float] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    q = db.query(EmailLead)
+    q = select(EmailLead)
     if country_code:
-        q = q.filter(EmailLead.country_code == country_code.upper())
+        q = q.where(EmailLead.country_code == country_code.upper())
     if city:
-        q = q.filter(EmailLead.city.ilike(f"%{city}%"))
-    if niche:
-        q = q.filter(EmailLead.niche.ilike(f"%{niche}%"))
-    if is_verified is not None:
-        q = q.filter(EmailLead.is_verified == is_verified)
+        q = q.where(EmailLead.city.ilike(f"%{city}%"))
+    if is_suppressed is not None:
+        q = q.where(EmailLead.is_suppressed == is_suppressed)
     if min_score is not None:
-        q = q.filter(EmailLead.score >= min_score)
-    if job_id:
-        q = q.filter(EmailLead.job_id == job_id)
+        q = q.where(EmailLead.lead_score >= min_score)
 
-    total = q.count()
-    rows = q.order_by(EmailLead.score.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    count_result = await db.execute(select(func.count()).select_from(q.subquery()))
+    total = count_result.scalar()
+
+    rows_result = await db.execute(
+        q.order_by(EmailLead.lead_score.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    rows = rows_result.scalars().all()
     return {
         "total": total,
         "page": page,
         "page_size": page_size,
-        "results": [LeadRead.from_orm(r) for r in rows],
+        "results": [LeadRead.model_validate(r) for r in rows],
     }
 
 
 @router.get("/export", summary="Export leads as CSV")
-def export_leads(
+async def export_leads(
     country_code: Optional[str] = None,
-    job_id: Optional[int] = None,
-    is_verified: Optional[bool] = None,
-    db: Session = Depends(get_db),
+    is_suppressed: Optional[bool] = False,
+    db: AsyncSession = Depends(get_db),
 ):
-    q = db.query(EmailLead)
+    q = select(EmailLead)
     if country_code:
-        q = q.filter(EmailLead.country_code == country_code.upper())
-    if job_id:
-        q = q.filter(EmailLead.job_id == job_id)
-    if is_verified is not None:
-        q = q.filter(EmailLead.is_verified == is_verified)
+        q = q.where(EmailLead.country_code == country_code.upper())
+    if is_suppressed is not None:
+        q = q.where(EmailLead.is_suppressed == is_suppressed)
 
-    rows = q.order_by(EmailLead.score.desc()).all()
+    result = await db.execute(q.order_by(EmailLead.lead_score.desc()))
+    rows = result.scalars().all()
+
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "id", "email", "full_name", "city", "region", "country", "country_code",
-        "niche", "score", "is_verified", "mx_valid", "source_url", "job_id"
+        "id", "email", "name", "phone", "city", "region",
+        "country", "country_code", "lead_score", "source_url", "scraped_at"
     ])
     for r in rows:
         writer.writerow([
-            r.id, r.email, r.full_name, r.city, r.region, r.country, r.country_code,
-            r.niche, r.score, r.is_verified, r.mx_valid, r.source_url, r.job_id
+            r.id, r.email, r.name, r.phone, r.city, r.region,
+            r.country, r.country_code, r.lead_score, r.source_url, r.scraped_at
         ])
     output.seek(0)
     return StreamingResponse(
@@ -83,9 +86,9 @@ def export_leads(
 
 
 @router.get("/{lead_id}", response_model=LeadRead)
-def get_lead(lead_id: int, db: Session = Depends(get_db)):
-    from fastapi import HTTPException
-    lead = db.query(EmailLead).filter(EmailLead.id == lead_id).first()
+async def get_lead(lead_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(EmailLead).where(EmailLead.id == lead_id))
+    lead = result.scalar_one_or_none()
     if not lead:
         raise HTTPException(404, "Lead not found")
     return lead

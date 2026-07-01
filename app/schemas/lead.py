@@ -1,27 +1,26 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
+import uuid
 
 
 class LeadRead(BaseModel):
-    id: int
+    id: uuid.UUID
     email: str
-    first_name: Optional[str]
-    last_name: Optional[str]
-    full_name: Optional[str]
-    city: Optional[str]
-    region: Optional[str]
-    country: Optional[str]
-    country_code: Optional[str]
-    source_url: Optional[str]
-    source_domain: Optional[str]
-    niche: Optional[str]
-    score: int
-    is_verified: bool
-    is_disposable: bool
-    mx_valid: bool
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    snippet: Optional[str] = None
+    city: Optional[str] = None
+    region: Optional[str] = None
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    location_confidence: float = 0.0
+    lead_score: float = 0.0
+    is_suppressed: bool = False
+    source_url: Optional[str] = None
+    scraped_at: Optional[datetime] = None
     created_at: datetime
-    job_id: Optional[int]
 
     class Config:
         from_attributes = True
@@ -30,9 +29,7 @@ class LeadRead(BaseModel):
 class LeadFilter(BaseModel):
     country_code: Optional[str] = None
     city: Optional[str] = None
-    niche: Optional[str] = None
-    is_verified: Optional[bool] = None
-    min_score: Optional[int] = None
-    job_id: Optional[int] = None
+    is_suppressed: Optional[bool] = None
+    min_score: Optional[float] = None
     page: int = 1
     page_size: int = 50

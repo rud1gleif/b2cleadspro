@@ -1,24 +1,29 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+import uuid
 
 
 class ProxyCreate(BaseModel):
-    host: str
-    port: int
-    protocol: str = "http"
-    username: Optional[str] = None
-    password: Optional[str] = None
-    country_code: Optional[str] = None
+    url: str
+    provider: Optional[str] = None
+    proxy_type: str = "datacenter"
+    country: Optional[str] = None
+    city: Optional[str] = None
+    sticky_capable: bool = False
 
 
-class ProxyRead(ProxyCreate):
-    id: int
-    is_active: bool
-    latency_ms: Optional[int]
-    fail_count: int
-    success_count: int
-    last_checked_at: Optional[datetime]
+class ProxyRead(BaseModel):
+    id: uuid.UUID
+    url: str
+    provider: Optional[str] = None
+    proxy_type: str
+    country: Optional[str] = None
+    city: Optional[str] = None
+    active: bool
+    health_score: float
+    avg_latency_ms: Optional[int] = None
+    recent_failures: int
     created_at: datetime
 
     class Config:
