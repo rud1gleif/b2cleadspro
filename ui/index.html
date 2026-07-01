@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>B2C Leads Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="B2C Leads Pro">
+      <rect width="32" height="32" rx="8" fill="var(--color-primary)"/>
+      <path d="M8 10h7c2.2 0 4 1.8 4 4s-1.8 4-4 4H8V10z" fill="white" opacity=".9"/>
+      <path d="M8 18h8c2.4 0 4.5 2 4.5 4.5S18.4 27 16 27H8V18z" fill="white"/>
+      <circle cx="22" cy="12" r="3.5" fill="white" opacity=".6"/>
+    </svg>
+    <span class="sidebar-logo-text">B2C Leads Pro</span>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-page="dashboard" onclick="showPage('dashboard',this)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+    <a href="#" class="nav-item" data-page="new-job" onclick="showPage('new-job',this)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      New Job
+    </a>
+    <a href="#" class="nav-item" data-page="jobs" onclick="showPage('jobs',this)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Jobs
+    </a>
+    <a href="#" class="nav-item" data-page="leads" onclick="showPage('leads',this)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Leads
+    </a>
+    <a href="#" class="nav-item" data-page="proxies" onclick="showPage('proxies',this)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Proxies
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+    <a href="/docs" target="_blank" class="docs-link">API Docs ↗</a>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main-content">
+
+  <!-- DASHBOARD PAGE -->
+  <div id="page-dashboard" class="page active">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <span class="badge badge-live" id="status-badge">Live</span>
+    </div>
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Leads</div>
+        <div class="kpi-value" id="kpi-total-leads">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Verified Leads</div>
+        <div class="kpi-value" id="kpi-verified">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Active Jobs</div>
+        <div class="kpi-value" id="kpi-active-jobs">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Active Proxies</div>
+        <div class="kpi-value" id="kpi-proxies">—</div>
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2>Recent Jobs</h2>
+      <button class="btn btn-sm btn-ghost" onclick="loadDashboard()">↻ Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Status</th><th>Locations</th><th>Progress</th><th>Leads</th><th>Pages</th><th>Created</th><th></th></tr></thead>
+        <tbody id="dashboard-jobs-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- NEW JOB PAGE -->
+  <div id="page-new-job" class="page">
+    <div class="page-header"><h1>New Scrape Job</h1></div>
+    <div class="card form-card">
+      <div class="form-group">
+        <label>Locations <span class="hint">(search & add multiple)</span></label>
+        <div class="location-search-wrap">
+          <input type="text" id="location-search" placeholder="Type city, country…" oninput="searchLocations()" autocomplete="off" />
+          <div class="location-dropdown" id="location-dropdown"></div>
+        </div>
+        <div class="location-tags" id="location-tags"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Niches <span class="hint">(optional — comma separated)</span></label>
+        <input type="text" id="job-niches" placeholder="e.g. fitness, dental, real estate" />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Max Pages</label>
+          <input type="number" id="job-max-pages" value="50" min="1" max="500" />
+        </div>
+        <div class="form-group">
+          <label>Concurrency</label>
+          <input type="number" id="job-concurrency" value="5" min="1" max="10" />
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="submitJob()">🚀 Launch Job</button>
+        <span id="job-submit-msg" class="form-msg"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- JOBS PAGE -->
+  <div id="page-jobs" class="page">
+    <div class="page-header">
+      <h1>Jobs</h1>
+      <button class="btn btn-sm btn-ghost" onclick="loadJobs()">↻ Refresh</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Status</th><th>Locations</th><th>Niches</th><th>Progress</th><th>Leads</th><th>Pages</th><th>Started</th><th>Finished</th><th></th></tr></thead>
+        <tbody id="jobs-body"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LEADS PAGE -->
+  <div id="page-leads" class="page">
+    <div class="page-header">
+      <h1>Leads</h1>
+      <button class="btn btn-primary btn-sm" onclick="exportLeads()">⬇ Export CSV</button>
+    </div>
+
+    <div class="filter-bar">
+      <input type="text" id="filter-country" placeholder="Country code (e.g. US)" maxlength="3" />
+      <input type="text" id="filter-city" placeholder="City" />
+      <input type="text" id="filter-niche" placeholder="Niche" />
+      <select id="filter-verified">
+        <option value="">All</option>
+        <option value="true">Verified only</option>
+        <option value="false">Unverified only</option>
+      </select>
+      <input type="number" id="filter-min-score" placeholder="Min score" min="0" max="100" />
+      <button class="btn btn-primary btn-sm" onclick="loadLeads(1)">Filter</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearFilters()">Clear</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Email</th><th>Name</th><th>City</th><th>Country</th><th>Niche</th><th>Score</th><th>Verified</th><th>Source</th><th>Job</th></tr></thead>
+        <tbody id="leads-body"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="leads-pagination"></div>
+  </div>
+
+  <!-- PROXIES PAGE -->
+  <div id="page-proxies" class="page">
+    <div class="page-header">
+      <h1>Proxies</h1>
+      <button class="btn btn-sm btn-ghost" onclick="loadProxies()">↻ Refresh</button>
+    </div>
+
+    <div class="card form-card">
+      <h3>Add Proxy</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Host</label><input type="text" id="proxy-host" placeholder="192.168.1.1" /></div>
+        <div class="form-group"><label>Port</label><input type="number" id="proxy-port" placeholder="8080" /></div>
+        <div class="form-group">
+          <label>Protocol</label>
+          <select id="proxy-protocol"><option>http</option><option>https</option><option>socks5</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Username</label><input type="text" id="proxy-username" placeholder="optional" /></div>
+        <div class="form-group"><label>Password</label><input type="password" id="proxy-password" placeholder="optional" /></div>
+        <div class="form-group"><label>Country Code</label><input type="text" id="proxy-country" placeholder="US" maxlength="3" /></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" onclick="addProxy()">Add Proxy</button>
+        <span id="proxy-msg" class="form-msg"></span>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:var(--space-6)">
+      <table>
+        <thead><tr><th>Host</th><th>Port</th><th>Protocol</th><th>Country</th><th>Active</th><th>Latency</th><th>Fails</th><th>Last Checked</th><th></th></tr></thead>
+        <tbody id="proxies-body"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

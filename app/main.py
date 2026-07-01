@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
+import os
 from app.config import settings
 from app.api import locations, jobs, leads, proxies
+from app.api.ui import router as ui_router
 
 app = FastAPI(
     title="B2C Leads Pro",
@@ -19,10 +22,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API routes
 app.include_router(locations.router, prefix="/api/locations", tags=["Locations"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(leads.router, prefix="/api/leads", tags=["Leads"])
 app.include_router(proxies.router, prefix="/api/proxies", tags=["Proxies"])
+
+# Serve static UI assets
+UI_DIR = os.path.join(os.path.dirname(__file__), "../ui")
+if os.path.isdir(UI_DIR):
+    app.mount("/static", StaticFiles(directory=os.path.join(UI_DIR, "static")), name="static")
+
+# Dashboard root
+app.include_router(ui_router, prefix="", tags=["Dashboard"])
 
 
 @app.on_event("startup")
