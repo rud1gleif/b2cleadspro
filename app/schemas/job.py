@@ -1,39 +1,44 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional, List
-from uuid import UUID
 from datetime import datetime
+from enum import Enum
+
+
+class JobStatus(str, Enum):
+    pending = "pending"
+    running = "running"
+    done = "done"
+    failed = "failed"
+    cancelled = "cancelled"
 
 
 class JobCreate(BaseModel):
-    location: str = Field(..., description="City, region, or country to search")
-    source_types: Optional[List[str]] = Field(
-        default=["directories", "classifieds", "forums"],
-        description="Source types to scrape",
-    )
-    keywords: Optional[List[str]] = Field(
-        default=None, description="Optional keyword filters"
-    )
-    proxy_mode: Optional[str] = Field(
-        default="rotating_residential",
-        description="rotating_datacenter | rotating_residential | sticky_residential",
-    )
+    location_ids: List[int]
+    niches: Optional[List[str]] = None
+    max_pages: Optional[int] = 50
+    concurrency: Optional[int] = 5
 
 
-class JobResponse(BaseModel):
-    id: UUID
+class JobUpdate(BaseModel):
+    status: Optional[JobStatus] = None
+    progress: Optional[int] = None
+    error_message: Optional[str] = None
+
+
+class JobRead(BaseModel):
+    id: int
     status: str
-    location_id: Optional[UUID]
-    source_types: Optional[List[str]]
-    keywords: Optional[List[str]]
-    proxy_mode: str
-    pages_discovered: int
-    pages_scraped: int
-    emails_found: int
-    emails_verified: int
+    location_ids: List[int]
+    niches: Optional[List[str]]
+    max_pages: int
+    concurrency: int
+    progress: int
+    leads_found: int
+    pages_crawled: int
     error_message: Optional[str]
+    created_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
-    created_at: datetime
 
     class Config:
         from_attributes = True
