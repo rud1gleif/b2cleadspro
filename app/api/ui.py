@@ -116,7 +116,7 @@ HTML = """\
     </div>
   </div>
   <div>
-    <div class="section-label">Niches <span style="color:#555;font-weight:400">(optional &#x2014; comma separated)</span></div>
+    <div class="section-label">Niches <span style="color:#555;font-weight:400">(optional, comma separated)</span></div>
     <input type="text" id="niches" placeholder="e.g. plumber, electrician">
   </div>
   <div>
@@ -132,7 +132,7 @@ HTML = """\
     <div class="field"><label>Max Pages</label><input type="number" id="max-pages" value="10" min="1" max="500"></div>
     <div class="field"><label>Concurrency</label><input type="number" id="concurrency" value="3" min="1" max="20"></div>
   </div>
-  <button class="btn-launch" id="btn-launch" onclick="launchJob()">&#x1F680; Launch Job</button>
+  <button class="btn-launch" id="btn-launch" onclick="launchJob()">Launch Job</button>
   <div>
     <div class="section-label">Recent Jobs</div>
     <div class="jobs-list" id="jobs-list"></div>
@@ -152,7 +152,7 @@ HTML = """\
         <button class="filter-btn" data-filter="yellowpages" onclick="setFilter('yellowpages')">yellowpages</button>
         <button class="filter-btn" data-filter="angi" onclick="setFilter('angi')">angi</button>
       </div>
-      <button class="btn-export" onclick="exportCSV()">&#x2193; Export CSV</button>
+      <button class="btn-export" onclick="exportCSV()">Export CSV</button>
     </div>
   </div>
   <div id="table-wrap">
@@ -168,11 +168,11 @@ HTML = """\
   </div>
 </main>
 <script>
-const API='';
-let currentJobId=null,allLeads=[],currentFilter='all',pollTimer=null,locations=[];
-const locInput=document.getElementById('loc-input');
-const locWrap=document.getElementById('loc-wrap');
-locInput.addEventListener('keydown',e=>{
+var API='';
+var currentJobId=null,allLeads=[],currentFilter='all',pollTimer=null,locations=[];
+var locInput=document.getElementById('loc-input');
+var locWrap=document.getElementById('loc-wrap');
+locInput.addEventListener('keydown',function(e){
   if((e.key==='Enter'||e.key===',')&&locInput.value.trim()){
     e.preventDefault();addLocation(locInput.value.trim().replace(/,$/,''));locInput.value='';
   }else if(e.key==='Backspace'&&!locInput.value&&locations.length){
@@ -180,107 +180,118 @@ locInput.addEventListener('keydown',e=>{
   }
 });
 function addLocation(city){
-  if(!city||locations.includes(city))return;
+  if(!city||locations.indexOf(city)>=0)return;
   locations.push(city);
-  const tag=document.createElement('div');tag.className='tag';tag.dataset.city=city;
-  tag.innerHTML=`${city} <button onclick="removeLocation('${city}')">&times;</button>`;
+  var tag=document.createElement('div');tag.className='tag';tag.dataset.city=city;
+  var btn=document.createElement('button');btn.innerHTML='&times;';
+  btn.onclick=function(){removeLocation(city);};
+  tag.appendChild(document.createTextNode(city+' '));
+  tag.appendChild(btn);
   locWrap.insertBefore(tag,locInput);
 }
 function removeLocation(city){
-  locations=locations.filter(l=>l!==city);
-  const el=locWrap.querySelector(`[data-city="${CSS.escape(city)}"]`);
+  locations=locations.filter(function(l){return l!==city;});
+  var el=locWrap.querySelector('[data-city="'+CSS.escape(city)+'"]');
   if(el)el.remove();
 }
-document.querySelectorAll('.src-btn').forEach(btn=>btn.addEventListener('click',()=>btn.classList.toggle('active')));
-function getActiveSources(){return[...document.querySelectorAll('.src-btn.active')].map(b=>b.dataset.src);}
-async function launchJob(){
+document.querySelectorAll('.src-btn').forEach(function(btn){btn.addEventListener('click',function(){btn.classList.toggle('active');});});
+function getActiveSources(){return Array.from(document.querySelectorAll('.src-btn.active')).map(function(b){return b.dataset.src;});}
+function launchJob(){
   if(!locations.length){alert('Please add at least one location.');return;}
-  const sources=getActiveSources();
+  var sources=getActiveSources();
   if(!sources.length){alert('Select at least one source.');return;}
-  const btn=document.getElementById('btn-launch');
+  var btn=document.getElementById('btn-launch');
   btn.disabled=true;btn.textContent='Launching...';
-  try{
-    const res=await fetch(`${API}/api/jobs/`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({locations,niches:document.getElementById('niches').value,
-        sources:sources.join(','),
-        max_pages:parseInt(document.getElementById('max-pages').value)||10,
-        concurrency:parseInt(document.getElementById('concurrency').value)||3})
-    });
-    const job=await res.json();loadJob(job.id);loadJobs();
-  }catch(e){alert('Failed: '+e);}
-  btn.disabled=false;btn.textContent='&#x1F680; Launch Job';
+  fetch(API+'/api/jobs/',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({locations:locations,niches:document.getElementById('niches').value,
+      sources:sources.join(','),
+      max_pages:parseInt(document.getElementById('max-pages').value)||10,
+      concurrency:parseInt(document.getElementById('concurrency').value)||3})
+  }).then(function(r){return r.json();}).then(function(job){
+    loadJob(job.id);loadJobs();
+  }).catch(function(e){alert('Failed: '+e);}).finally(function(){
+    btn.disabled=false;btn.textContent='Launch Job';
+  });
 }
-async function loadJob(id){
+function loadJob(id){
   clearInterval(pollTimer);currentJobId=id;
-  document.querySelectorAll('.job-card').forEach(c=>c.classList.toggle('active',+c.dataset.id===id));
-  await fetchLeads(id);
-  const job=await(await fetch(`${API}/api/jobs/${id}`)).json();
-  if(job.status==='running'||job.status==='pending'){
-    pollTimer=setInterval(async()=>{
-      await fetchLeads(id);
-      const j=await(await fetch(`${API}/api/jobs/${id}`)).json();
-      updateJobMeta(j);
-      if(j.status!=='running'&&j.status!=='pending')clearInterval(pollTimer);
-    },2000);
-  }
-  updateJobMeta(job);
+  document.querySelectorAll('.job-card').forEach(function(c){c.classList.toggle('active',+c.dataset.id===id);});
+  fetchLeads(id);
+  fetch(API+'/api/jobs/'+id).then(function(r){return r.json();}).then(function(job){
+    if(job.status==='running'||job.status==='pending'){
+      pollTimer=setInterval(function(){
+        fetchLeads(id);
+        fetch(API+'/api/jobs/'+id).then(function(r){return r.json();}).then(function(j){
+          updateJobMeta(j);
+          if(j.status!=='running'&&j.status!=='pending')clearInterval(pollTimer);
+        });
+      },2000);
+    }
+    updateJobMeta(job);
+  });
 }
-async function fetchLeads(id){
-  const r=await fetch(`${API}/api/leads/?job_id=${id}&limit=5000`);
-  allLeads=await r.json();renderTable();
+function fetchLeads(id){
+  fetch(API+'/api/leads/?job_id='+id+'&limit=5000').then(function(r){return r.json();}).then(function(data){
+    allLeads=data;renderTable();
+  });
 }
 function updateJobMeta(job){
-  const locs=JSON.parse(job.locations||'[]').join(', ');
-  document.getElementById('job-title').textContent=locs||`Job #${job.id}`;
-  document.getElementById('job-meta').textContent=job.leads_found+' leads \u00b7 '+job.status+' \u00b7 sources: '+job.sources;
+  var locs=JSON.parse(job.locations||'[]').join(', ');
+  document.getElementById('job-title').textContent=locs||('Job #'+job.id);
+  document.getElementById('job-meta').textContent=job.leads_found+' leads - '+job.status+' - sources: '+job.sources;
   loadJobs();
 }
-async function loadJobs(){
-  const jobs=await(await fetch(`${API}/api/jobs/`)).json();
-  const list=document.getElementById('jobs-list');list.innerHTML='';
-  jobs.slice().reverse().forEach(job=>{
-    const locs=JSON.parse(job.locations||'[]').join(', ');
-    const div=document.createElement('div');
-    div.className='job-card'+(job.id===currentJobId?' active':'');div.dataset.id=job.id;
-    div.onclick=()=>loadJob(job.id);
-    div.innerHTML='<div class="job-card-top"><span class="job-id">#'+job.id+'</span><span class="badge '+job.status+'">'+job.status.toUpperCase()+'</span></div><div class="job-meta">'+locs+' &middot; '+job.leads_found+' leads</div>';
-    list.appendChild(div);
+function loadJobs(){
+  fetch(API+'/api/jobs/').then(function(r){return r.json();}).then(function(jobs){
+    var list=document.getElementById('jobs-list');list.innerHTML='';
+    jobs.slice().reverse().forEach(function(job){
+      var locs=JSON.parse(job.locations||'[]').join(', ');
+      var div=document.createElement('div');
+      div.className='job-card'+(job.id===currentJobId?' active':'');div.dataset.id=job.id;
+      div.onclick=function(){loadJob(job.id);};
+      div.innerHTML='<div class="job-card-top"><span class="job-id">#'+job.id+'</span><span class="badge '+job.status+'">'+job.status.toUpperCase()+'</span></div><div class="job-meta">'+locs+' - '+job.leads_found+' leads</div>';
+      list.appendChild(div);
+    });
   });
 }
 function setFilter(f){
   currentFilter=f;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));
+  document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.toggle('active',b.dataset.filter===f);});
   renderTable();
 }
 function renderTable(){
-  const rows=currentFilter==='all'?allLeads:allLeads.filter(l=>l.source===currentFilter);
-  const tbody=document.getElementById('tbody'),empty=document.getElementById('empty-msg');
+  var rows=currentFilter==='all'?allLeads:allLeads.filter(function(l){return l.source===currentFilter;});
+  var tbody=document.getElementById('tbody'),empty=document.getElementById('empty-msg');
   if(!rows.length){
     tbody.innerHTML='';empty.style.display='';
     empty.textContent=allLeads.length?'No leads for this filter.':'No leads yet - job is running...';
     return;
   }
   empty.style.display='none';
-  tbody.innerHTML=rows.map(l=>'<tr>'
-    +'<td><span class="src-badge '+l.source+'">'+l.source+'</span></td>'
-    +'<td title="'+(l.name||'')+'">'+( l.name||'&mdash;')+'</td>'
-    +'<td>'+(l.phone||'&mdash;')+'</td>'
-    +'<td>'+(l.email?'<a href="mailto:'+l.email+'">'+l.email+'</a>':'&mdash;')+'</td>'
-    +'<td>'+(l.website?'<a href="'+l.website+'" target="_blank" rel="noopener">link</a>':'&mdash;')+'</td>'
-    +'<td title="'+(l.address||'')+'">'+( l.address||'&mdash;')+'</td>'
-    +'<td>'+(l.rating||'&mdash;')+'</td>'
-    +'<td>'+(l.category||'&mdash;')+'</td>'
-    +'<td>'+(l.location||'&mdash;')+'</td>'
-    +'<td>'+(l.niche||'&mdash;')+'</td>'
-    +'</tr>').join('');
+  tbody.innerHTML=rows.map(function(l){
+    return '<tr>'
+      +'<td><span class="src-badge '+l.source+'">'+l.source+'</span></td>'
+      +'<td>'+(l.name||'-')+'</td>'
+      +'<td>'+(l.phone||'-')+'</td>'
+      +'<td>'+(l.email?'<a href="mailto:'+l.email+'">'+l.email+'</a>':'-')+'</td>'
+      +'<td>'+(l.website?'<a href="'+l.website+'" target="_blank" rel="noopener">link</a>':'-')+'</td>'
+      +'<td>'+(l.address||'-')+'</td>'
+      +'<td>'+(l.rating||'-')+'</td>'
+      +'<td>'+(l.category||'-')+'</td>'
+      +'<td>'+(l.location||'-')+'</td>'
+      +'<td>'+(l.niche||'-')+'</td>'
+      +'</tr>';
+  }).join('');
 }
 function exportCSV(){
-  const rows=currentFilter==='all'?allLeads:allLeads.filter(l=>l.source===currentFilter);
+  var rows=currentFilter==='all'?allLeads:allLeads.filter(function(l){return l.source===currentFilter;});
   if(!rows.length){alert('No leads to export.');return;}
-  const cols=['source','name','phone','email','website','address','rating','category','location','niche'];
-  const csv=[cols.join(','),...rows.map(r=>cols.map(c=>'"'+String(r[c]||'').replace(/"/g,'""')+'"').join(','))].join('\n');
-  const a=document.createElement('a');
+  var cols=['source','name','phone','email','website','address','rating','category','location','niche'];
+  var csv=[cols.join(',')].concat(rows.map(function(r){
+    return cols.map(function(c){return '"'+String(r[c]||'').replace(/"/g,'""')+'"';}).join(',');
+  })).join('\n');
+  var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download='leads_job_'+currentJobId+'.csv';a.click();
 }
