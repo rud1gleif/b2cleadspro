@@ -4,7 +4,7 @@ from fastapi.responses import Response
 
 router = APIRouter()
 
-HTML = b"""
+HTML = """\
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -209,7 +209,7 @@ async function launchJob(){
     });
     const job=await res.json();loadJob(job.id);loadJobs();
   }catch(e){alert('Failed: '+e);}
-  btn.disabled=false;btn.textContent='\u{1F680} Launch Job';
+  btn.disabled=false;btn.textContent='&#x1F680; Launch Job';
 }
 async function loadJob(id){
   clearInterval(pollTimer);currentJobId=id;
@@ -233,7 +233,7 @@ async function fetchLeads(id){
 function updateJobMeta(job){
   const locs=JSON.parse(job.locations||'[]').join(', ');
   document.getElementById('job-title').textContent=locs||`Job #${job.id}`;
-  document.getElementById('job-meta').textContent=`${job.leads_found} leads \u00b7 ${job.status} \u00b7 sources: ${job.sources}`;
+  document.getElementById('job-meta').textContent=job.leads_found+' leads \u00b7 '+job.status+' \u00b7 sources: '+job.sources;
   loadJobs();
 }
 async function loadJobs(){
@@ -244,7 +244,7 @@ async function loadJobs(){
     const div=document.createElement('div');
     div.className='job-card'+(job.id===currentJobId?' active':'');div.dataset.id=job.id;
     div.onclick=()=>loadJob(job.id);
-    div.innerHTML=`<div class="job-card-top"><span class="job-id">#${job.id}</span><span class="badge ${job.status}">${job.status.toUpperCase()}</span></div><div class="job-meta">${locs} &middot; ${job.leads_found} leads</div>`;
+    div.innerHTML='<div class="job-card-top"><span class="job-id">#'+job.id+'</span><span class="badge '+job.status+'">'+job.status.toUpperCase()+'</span></div><div class="job-meta">'+locs+' &middot; '+job.leads_found+' leads</div>';
     list.appendChild(div);
   });
 }
@@ -258,22 +258,22 @@ function renderTable(){
   const tbody=document.getElementById('tbody'),empty=document.getElementById('empty-msg');
   if(!rows.length){
     tbody.innerHTML='';empty.style.display='';
-    empty.textContent=allLeads.length?'No leads for this filter.':'No leads yet \u2014 job is running...';
+    empty.textContent=allLeads.length?'No leads for this filter.':'No leads yet - job is running...';
     return;
   }
   empty.style.display='none';
-  tbody.innerHTML=rows.map(l=>`<tr>
-    <td><span class="src-badge ${l.source}">${l.source}</span></td>
-    <td title="${l.name||''}">${l.name||'\u2014'}</td>
-    <td>${l.phone||'\u2014'}</td>
-    <td>${l.email?`<a href="mailto:${l.email}">${l.email}</a>`:'\u2014'}</td>
-    <td>${l.website?`<a href="${l.website}" target="_blank" rel="noopener">link</a>`:'\u2014'}</td>
-    <td title="${l.address||''}">${l.address||'\u2014'}</td>
-    <td>${l.rating||'\u2014'}</td>
-    <td>${l.category||'\u2014'}</td>
-    <td>${l.location||'\u2014'}</td>
-    <td>${l.niche||'\u2014'}</td>
-  </tr>`).join('');
+  tbody.innerHTML=rows.map(l=>'<tr>'
+    +'<td><span class="src-badge '+l.source+'">'+l.source+'</span></td>'
+    +'<td title="'+(l.name||'')+'">'+( l.name||'&mdash;')+'</td>'
+    +'<td>'+(l.phone||'&mdash;')+'</td>'
+    +'<td>'+(l.email?'<a href="mailto:'+l.email+'">'+l.email+'</a>':'&mdash;')+'</td>'
+    +'<td>'+(l.website?'<a href="'+l.website+'" target="_blank" rel="noopener">link</a>':'&mdash;')+'</td>'
+    +'<td title="'+(l.address||'')+'">'+( l.address||'&mdash;')+'</td>'
+    +'<td>'+(l.rating||'&mdash;')+'</td>'
+    +'<td>'+(l.category||'&mdash;')+'</td>'
+    +'<td>'+(l.location||'&mdash;')+'</td>'
+    +'<td>'+(l.niche||'&mdash;')+'</td>'
+    +'</tr>').join('');
 }
 function exportCSV(){
   const rows=currentFilter==='all'?allLeads:allLeads.filter(l=>l.source===currentFilter);
@@ -282,7 +282,7 @@ function exportCSV(){
   const csv=[cols.join(','),...rows.map(r=>cols.map(c=>'"'+String(r[c]||'').replace(/"/g,'""')+'"').join(','))].join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
-  a.download=`leads_job_${currentJobId}.csv`;a.click();
+  a.download='leads_job_'+currentJobId+'.csv';a.click();
 }
 loadJobs();
 </script>
@@ -292,4 +292,4 @@ loadJobs();
 
 @router.get("/", response_class=Response)
 async def index():
-    return Response(content=HTML, media_type="text/html; charset=utf-8")
+    return Response(content=HTML.encode("utf-8"), media_type="text/html; charset=utf-8")
