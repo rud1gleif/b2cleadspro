@@ -21,6 +21,11 @@ HEADERS = {
 }
 
 
+def _text(tag) -> Optional[str]:
+    """Safely get text from a BS4 tag, returns None if tag is None."""
+    return tag.get_text(strip=True) if tag else None
+
+
 # ---------------------------------------------------------------------------
 # Yelp
 # ---------------------------------------------------------------------------
@@ -38,10 +43,10 @@ async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str
     for card in soup.select('li[class*="css-"] div[class*="businessName"]'):
         try:
             name_tag = card.find("a")
-            name = name_tag.get_text(strip=True) if name_tag else None
+            name = _text(name_tag)
             parent = card.find_parent("li")
             phone_tag = parent.find("p", string=re.compile(r"\(?\d{3}\)?")) if parent else None
-            phone = phone_tag.get_text(strip=True) if phone_tag else None
+            phone = _text(phone_tag)
             addr_tag = parent.find("address") if parent else None
             address = addr_tag.get_text(" ", strip=True) if addr_tag else None
             leads.append({"name": name, "phone": phone, "address": address,
@@ -51,7 +56,7 @@ async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str
     return leads
 
 
-async def scrape_yelp(location: str, niche: str, max_pages: int = 3) -> List[dict]:
+async def scrape_yelp(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
         for page in range(max_pages):
@@ -72,9 +77,7 @@ async def scrape_yelp(location: str, niche: str, max_pages: int = 3) -> List[dic
 # ---------------------------------------------------------------------------
 
 async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
-    slug_q = query.replace(" ", "-").lower()
-    slug_l = location.replace(" ", "-").replace(",", "").lower()
-    url = f"https://www.yellowpages.com/search?search_terms={slug_q}&geo_location_terms={location}&page={page}"
+    url = f"https://www.yellowpages.com/search?search_terms={query}&geo_location_terms={location}&page={page}"
     try:
         r = await client.get(url, timeout=15)
         soup = BeautifulSoup(r.text, "lxml")
@@ -84,9 +87,9 @@ async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, 
     leads = []
     for card in soup.select("div.result"):
         try:
-            name = card.select_one(".business-name span")?.get_text(strip=True)
-            phone = card.select_one(".phones")?.get_text(strip=True)
-            address = card.select_one(".street-address")?.get_text(strip=True)
+            name = _text(card.select_one(".business-name span"))
+            phone = _text(card.select_one(".phones"))
+            address = _text(card.select_one(".street-address"))
             website_tag = card.select_one("a.track-visit-website")
             website = website_tag["href"] if website_tag else None
             leads.append({"name": name, "phone": phone, "address": address,
@@ -96,14 +99,13 @@ async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, 
     return leads
 
 
-async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3) -> List[dict]:
+async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
         for page in range(1, max_pages + 1):
             batch = await _scrape_yp_page(client, niche, location, page)
             if not batch:
                 break
-            # enrich with emails
             tasks = [extract_email_from_site(lead["website"]) for lead in batch if lead.get("website")]
             emails = await asyncio.gather(*tasks, return_exceptions=True)
             ei = 0
@@ -125,7 +127,7 @@ async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3) -> L
 # ---------------------------------------------------------------------------
 
 async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
-    url = f"https://www.angi.com/companylist/{query.replace(' ', '-').lower()}/{location.replace(' ', '-').lower()}-{page}.htm"
+    url = f"https://www.angi.com/companylist/{query.replace(' ', '-').lower()}/{location.replace(' ', '-').replace(',', '').lower()}-{page}.htm"
     try:
         r = await client.get(url, timeout=15)
         soup = BeautifulSoup(r.text, "lxml")
@@ -135,9 +137,9 @@ async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str
     leads = []
     for card in soup.select("div.project-pro-info, div[class*='provider']"):
         try:
-            name = card.select_one("h2, h3, .company-name")?.get_text(strip=True)
-            phone_tag = card.select_one("[class*='phone'], [href^='tel:']") 
-            phone = phone_tag.get_text(strip=True) if phone_tag else None
+            name = _text(card.select_one("h2, h3, .company-name"))
+            phone_tag = card.select_one("[class*='phone'], [href^='tel:']")
+            phone = _text(phone_tag)
             addr_tag = card.select_one("[class*='address'], [class*='location']")
             address = addr_tag.get_text(" ", strip=True) if addr_tag else None
             rating_tag = card.select_one("[class*='rating'] [aria-label]")
@@ -152,7 +154,7 @@ async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str
     return leads
 
 
-async def scrape_angi(location: str, niche: str, max_pages: int = 3) -> List[dict]:
+async def scrape_angi(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
     async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
         for page in range(1, max_pages + 1):
