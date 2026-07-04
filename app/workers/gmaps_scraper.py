@@ -3,6 +3,10 @@
 Fully free, no API key, no blocks.
 Uses Nominatim to geocode the location, then Overpass to fetch
 businesses matching the niche within a radius.
+
+Email enrichment: for every lead that has a website but no email in OSM tags,
+we concurrently crawl the website via NordVPN to extract an email.
+No cap — every lead with a website gets attempted.
 """
 import asyncio
 import re
@@ -140,17 +144,26 @@ async def scrape_gmaps(
                 if len(elements) >= max_results:
                     break
 
-        enriched = 0
+        # Build raw lead list first
+        raw_leads: List[dict] = []
         for el in elements[:max_results]:
             lead = _extract_lead(el, location, niche)
-            if not lead:
-                continue
-            if not lead["email"] and lead["website"] and enriched < 20:
-                try:
-                    lead["email"] = await extract_email_from_site(lead["website"])
-                    enriched += 1
-                except Exception:
-                    pass
-            results.append(lead)
+            if lead:
+                raw_leads.append(lead)
 
-    return results
+    # --- Concurrent email enrichment (no cap) ---
+    # For every lead that has a website but no email in OSM tags,
+    # fire off extract_email_from_site concurrently.
+    enrich_sem = asyncio.Semaphore(8)  # max 8 concurrent site crawls
+
+    async def _enrich(lead: dict) -> None:
+        if lead.get("email") or not lead.get("website"):
+            return
+        async with enrich_sem:
+            try:
+                lead["email"] = await extract_email_from_site(lead["website"])
+            except Exception:
+                pass
+
+    await asyncio.gather(*[_enrich(lead) for lead in raw_leads], return_exceptions=True)
+    return raw_leads

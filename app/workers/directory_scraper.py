@@ -1,6 +1,7 @@
 """Directory scraper: Yelp, YellowPages, Angi — routed through NordVPN SOCKS5.
 
 Uses httpx + BeautifulSoup. All requests go through the Nord proxy.
+Every lead with a website gets concurrent email extraction via extract_email_from_site.
 """
 import asyncio
 import re
@@ -25,11 +26,29 @@ def _client() -> httpx.AsyncClient:
     )
 
 
+async def _enrich_leads(leads: List[dict], max_concurrent: int = 8) -> None:
+    """Concurrently crawl each lead's website and fill in missing emails."""
+    sem = asyncio.Semaphore(max_concurrent)
+
+    async def _fetch(lead: dict) -> None:
+        if lead.get("email") or not lead.get("website"):
+            return
+        async with sem:
+            try:
+                lead["email"] = await extract_email_from_site(lead["website"])
+            except Exception:
+                pass
+
+    await asyncio.gather(*[_fetch(lead) for lead in leads], return_exceptions=True)
+
+
 # ---------------------------------------------------------------------------
 # Yelp
 # ---------------------------------------------------------------------------
 
-async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str, offset: int) -> List[dict]:
+async def _scrape_yelp_page(
+    client: httpx.AsyncClient, query: str, location: str, offset: int
+) -> List[dict]:
     url = "https://www.yelp.com/search"
     params = {"find_desc": query, "find_loc": location, "start": offset}
     try:
@@ -48,8 +67,13 @@ async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str
             phone = _text(phone_tag)
             addr_tag = parent.find("address") if parent else None
             address = addr_tag.get_text(" ", strip=True) if addr_tag else None
-            leads.append({"name": name, "phone": phone, "address": address,
-                          "email": None, "website": None, "rating": None, "category": None})
+            # Try to grab website link from the card
+            website_tag = parent.find("a", href=re.compile(r"^https?://")) if parent else None
+            website = website_tag["href"] if website_tag else None
+            leads.append({
+                "name": name, "phone": phone, "address": address,
+                "email": None, "website": website, "rating": None, "category": None,
+            })
         except Exception:
             continue
     return leads
@@ -64,10 +88,15 @@ async def scrape_yelp(location: str, niche: str, max_pages: int = 3, **kwargs) -
                 break
             results.extend(batch)
             await asyncio.sleep(1.5)
+
+    # Tag metadata
     for lead in results:
         lead["source"] = "yelp"
         lead["location"] = location
         lead["niche"] = niche
+
+    # Enrich ALL leads with websites (concurrent, NordVPN proxy)
+    await _enrich_leads(results)
     return results
 
 
@@ -75,7 +104,9 @@ async def scrape_yelp(location: str, niche: str, max_pages: int = 3, **kwargs) -
 # YellowPages
 # ---------------------------------------------------------------------------
 
-async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
+async def _scrape_yp_page(
+    client: httpx.AsyncClient, query: str, location: str, page: int
+) -> List[dict]:
     url = f"https://www.yellowpages.com/search?search_terms={query}&geo_location_terms={location}&page={page}"
     try:
         r = await client.get(url)
@@ -91,8 +122,10 @@ async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, 
             address = _text(card.select_one(".street-address"))
             website_tag = card.select_one("a.track-visit-website")
             website = website_tag["href"] if website_tag else None
-            leads.append({"name": name, "phone": phone, "address": address,
-                          "website": website, "email": None, "rating": None, "category": None})
+            leads.append({
+                "name": name, "phone": phone, "address": address,
+                "website": website, "email": None, "rating": None, "category": None,
+            })
         except Exception:
             continue
     return leads
@@ -105,19 +138,16 @@ async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3, **kw
             batch = await _scrape_yp_page(client, niche, location, page)
             if not batch:
                 break
-            tasks = [extract_email_from_site(lead["website"]) for lead in batch if lead.get("website")]
-            emails = await asyncio.gather(*tasks, return_exceptions=True)
-            ei = 0
-            for lead in batch:
-                if lead.get("website"):
-                    lead["email"] = emails[ei] if not isinstance(emails[ei], Exception) else None
-                    ei += 1
             results.extend(batch)
             await asyncio.sleep(1.5)
+
     for lead in results:
         lead["source"] = "yellowpages"
         lead["location"] = location
         lead["niche"] = niche
+
+    # Enrich ALL leads with websites (concurrent, NordVPN proxy)
+    await _enrich_leads(results)
     return results
 
 
@@ -125,8 +155,14 @@ async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3, **kw
 # Angi
 # ---------------------------------------------------------------------------
 
-async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
-    url = f"https://www.angi.com/companylist/{query.replace(' ', '-').lower()}/{location.replace(' ', '-').replace(',', '').lower()}-{page}.htm"
+async def _scrape_angi_page(
+    client: httpx.AsyncClient, query: str, location: str, page: int
+) -> List[dict]:
+    url = (
+        f"https://www.angi.com/companylist/"
+        f"{query.replace(' ', '-').lower()}/"
+        f"{location.replace(' ', '-').replace(',', '').lower()}-{page}.htm"
+    )
     try:
         r = await client.get(url)
         soup = BeautifulSoup(r.text, "lxml")
@@ -146,8 +182,13 @@ async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str
             if rating_tag:
                 m = re.search(r"([\d.]+)", rating_tag.get("aria-label", ""))
                 rating = float(m.group(1)) if m else None
-            leads.append({"name": name, "phone": phone, "address": address,
-                          "rating": rating, "email": None, "website": None, "category": None})
+            # Grab website link if present
+            website_tag = card.select_one("a[href^='http']")
+            website = website_tag["href"] if website_tag else None
+            leads.append({
+                "name": name, "phone": phone, "address": address,
+                "rating": rating, "email": None, "website": website, "category": None,
+            })
         except Exception:
             continue
     return leads
@@ -162,8 +203,12 @@ async def scrape_angi(location: str, niche: str, max_pages: int = 3, **kwargs) -
                 break
             results.extend(batch)
             await asyncio.sleep(1.5)
+
     for lead in results:
         lead["source"] = "angi"
         lead["location"] = location
         lead["niche"] = niche
+
+    # Enrich ALL leads with websites (concurrent, NordVPN proxy)
+    await _enrich_leads(results)
     return results
