@@ -21,6 +21,9 @@ services:
     build: .
     ports:
       - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       DATABASE_URL: postgresql+asyncpg://b2c:b2cpass@db:5432/b2cleads
       CONCURRENCY: 5
