@@ -1,140 +1,166 @@
-"""Google Maps scraper using Playwright.
+"""Business data via OpenStreetMap Overpass API.
 
-For each (location, niche) pair it:
-  1. Navigates to Google Maps and searches "<niche> in <location>".
-  2. Scrolls the results panel to load up to max_results listings.
-  3. Clicks each card, extracts: name, phone, website, address, rating, category.
-  4. Visits the website (if present) to harvest an email.
-  5. Also checks the Maps listing itself for an email link.
+Fully free, no API key, no scraping, no blocks.
+Uses Nominatim to geocode the location, then Overpass to fetch
+businesses matching the niche within a radius.
 """
 import asyncio
 import re
+import httpx
 from typing import List, Optional
-from playwright.async_api import async_playwright, Page
 from app.workers.email_extractor import extract_email_from_site
 
-PHONE_RE = re.compile(r"[\+]?[\d\s\-().]{7,20}")
-EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+OVERPASS_URL  = "https://overpass-api.de/api/interpreter"
+
+# Map common niche keywords → OSM amenity/shop/craft tags
+NICHE_TAG_MAP = {
+    "plumber":       'amenity"="plumber',
+    "electrician":   'craft"="electrician',
+    "dentist":       'amenity"="dentist',
+    "restaurant":    'amenity"="restaurant',
+    "cafe":          'amenity"="cafe',
+    "gym":           'leisure"="fitness_centre',
+    "lawyer":        'amenity"="lawyers',
+    "doctor":        'amenity"="doctors',
+    "hair":          'shop"="hairdresser',
+    "salon":         'shop"="beauty',
+    "cleaner":       'shop"="dry_cleaning',
+    "mechanic":      'shop"="car_repair',
+    "real estate":   'office"="real_estate_agent',
+    "insurance":     'office"="insurance',
+    "accountant":    'office"="accountant',
+    "veterinarian":  'amenity"="veterinary',
+    "pharmacy":      'amenity"="pharmacy',
+    "hotel":         'tourism"="hotel',
+    "contractor":    'craft"="construction',
+    "painter":       'craft"="painter',
+}
+
+HEADERS = {
+    "User-Agent": "B2CLeadsPro/1.0 (lead-generation-tool; contact: admin@example.com)",
+    "Accept": "application/json",
+}
 
 
-async def _scroll_results(page: Page, max_results: int) -> None:
-    panel_sel = '[role="feed"]'
+def _niche_to_osm_filter(niche: str) -> str:
+    """Convert a niche string to an OSM tag filter string."""
+    if not niche:
+        return 'amenity'
+    niche_lower = niche.lower()
+    for keyword, tag in NICHE_TAG_MAP.items():
+        if keyword in niche_lower:
+            return tag
+    # Fallback: search by name keyword across all nodes/ways
+    return f'name~"{re.escape(niche)}",i'
+
+
+async def _geocode(location: str, client: httpx.AsyncClient) -> Optional[tuple]:
+    """Return (lat, lon) for a location string using Nominatim."""
     try:
-        await page.wait_for_selector(panel_sel, timeout=15000)
-    except Exception:
-        return
-    seen = 0
-    # Each scroll loads ~5-7 more results; iterate enough times to reach max
-    max_scrolls = (max_results // 5) + 20
-    for _ in range(max_scrolls):
-        count = await page.locator('[role="article"]').count()
-        if count >= max_results:
-            break
-        if count == seen:
-            # hit the bottom — no more results
-            break
-        seen = count
-        await page.locator(panel_sel).evaluate("el => el.scrollBy(0, 1200)")
-        await asyncio.sleep(1.0)
-
-
-async def _parse_card(page: Page) -> dict:
-    data: dict = {}
-    try:
-        data["name"] = await page.locator('h1.DUwDvf, h1[data-attrid]').first.inner_text(timeout=5000)
-    except Exception:
-        data["name"] = None
-    try:
-        data["rating"] = float(
-            await page.locator('[data-value="Stars"] span[aria-hidden]').first.inner_text(timeout=3000)
+        r = await client.get(
+            NOMINATIM_URL,
+            params={"q": location, "format": "json", "limit": 1},
+            headers=HEADERS,
+            timeout=15,
         )
+        data = r.json()
+        if data:
+            return float(data[0]["lat"]), float(data[0]["lon"])
     except Exception:
-        data["rating"] = None
-    try:
-        data["category"] = await page.locator('button[jsaction*="category"]').first.inner_text(timeout=3000)
-    except Exception:
-        data["category"] = None
-    try:
-        data["address"] = await page.locator('[data-item-id*="address"]').first.inner_text(timeout=3000)
-    except Exception:
-        data["address"] = None
-    try:
-        data["phone"] = await page.locator('[data-item-id*="phone"]').first.inner_text(timeout=3000)
-    except Exception:
-        data["phone"] = None
-    try:
-        data["website"] = await page.locator('[data-item-id*="authority"] a').first.get_attribute("href", timeout=3000)
-    except Exception:
-        data["website"] = None
+        pass
+    return None
 
-    # Try to find an email directly on the Maps page (some listings show mailto: links)
-    try:
-        page_html = await page.content()
-        emails = EMAIL_RE.findall(page_html)
-        data["gmaps_email"] = emails[0].lower() if emails else None
-    except Exception:
-        data["gmaps_email"] = None
 
-    return data
+async def _overpass_query(lat: float, lon: float, tag_filter: str, radius_m: int, client: httpx.AsyncClient) -> list:
+    """Run an Overpass QL query and return elements."""
+    query = f"""
+[out:json][timeout:30];
+(
+  node[{tag_filter}](around:{radius_m},{lat},{lon});
+  way[{tag_filter}](around:{radius_m},{lat},{lon});
+);
+out center tags;
+"""
+    try:
+        r = await client.post(OVERPASS_URL, data={"data": query}, headers=HEADERS, timeout=45)
+        return r.json().get("elements", [])
+    except Exception:
+        return []
+
+
+def _extract_lead(el: dict, location: str, niche: str) -> Optional[dict]:
+    tags = el.get("tags", {})
+    name = tags.get("name")
+    if not name:
+        return None
+    phone   = tags.get("phone") or tags.get("contact:phone")
+    website = tags.get("website") or tags.get("contact:website")
+    email   = tags.get("email") or tags.get("contact:email")
+    street  = tags.get("addr:street", "")
+    house   = tags.get("addr:housenumber", "")
+    city    = tags.get("addr:city", location)
+    address = " ".join(filter(None, [house, street, city])) or None
+    category = (
+        tags.get("amenity") or tags.get("shop") or
+        tags.get("craft") or tags.get("office") or
+        tags.get("tourism") or tags.get("leisure")
+    )
+    return {
+        "source":   "gmaps",
+        "name":     name,
+        "phone":    phone,
+        "email":    email,
+        "website":  website,
+        "address":  address,
+        "rating":   None,
+        "category": category,
+        "location": location,
+        "niche":    niche or None,
+    }
 
 
 async def scrape_gmaps(
     location: str,
     niche: str,
-    max_results: int = 20,
+    max_results: int = 100,
     semaphore: Optional[asyncio.Semaphore] = None,
 ) -> List[dict]:
-    """Return a list of lead dicts from Google Maps."""
-    sem = semaphore or asyncio.Semaphore(1)
-    results = []
+    """Return business leads from OpenStreetMap for (location, niche)."""
+    results: List[dict] = []
+    # Radius scales with max_results (roughly 500m per 20 results, capped at 50km)
+    radius_m = min(500 + (max_results // 20) * 2000, 50000)
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
-        ctx = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 900},
-        )
-        page = await ctx.new_page()
-        query = f"{niche} in {location}"
-        url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        except Exception:
-            await browser.close()
+    async with httpx.AsyncClient() as client:
+        coords = await _geocode(location, client)
+        if not coords:
             return []
+        lat, lon = coords
 
-        # Dismiss cookie consent if present
-        try:
-            await page.locator('button:has-text("Accept all"), button:has-text("Reject all")').first.click(timeout=3000)
-        except Exception:
-            pass
+        tag_filter = _niche_to_osm_filter(niche)
+        elements   = await _overpass_query(lat, lon, tag_filter, radius_m, client)
 
-        await asyncio.sleep(2)
-        await _scroll_results(page, max_results)
+        # If niche tag returned nothing, widen to a generic business search
+        if not elements and niche:
+            generic_filter = 'amenity,shop,craft,office,tourism,leisure'
+            for tag_key in ["amenity", "shop", "craft", "office"]:
+                elems = await _overpass_query(lat, lon, tag_key, radius_m, client)
+                elements.extend(elems)
+                if len(elements) >= max_results:
+                    break
 
-        cards = await page.locator('[role="article"] a[href*="/maps/place/"]').all()
-        for card in cards[:max_results]:
-            try:
-                async with sem:
-                    await card.click(timeout=5000)
-                    await asyncio.sleep(1.5)
-                    data = await _parse_card(page)
-
-                    # Email priority: 1) from Maps page, 2) from website
-                    email = data.pop("gmaps_email", None)
-                    if not email and data.get("website"):
-                        email = await extract_email_from_site(data["website"])
-                    data["email"] = email
-                    data["location"] = location
-                    data["niche"] = niche
-                    data["source"] = "gmaps"
-                    results.append(data)
-            except Exception:
+        # Enrich with emails from websites where missing
+        enriched = 0
+        for el in elements[:max_results]:
+            lead = _extract_lead(el, location, niche)
+            if not lead:
                 continue
+            if not lead["email"] and lead["website"] and enriched < 20:
+                try:
+                    lead["email"] = await extract_email_from_site(lead["website"])
+                    enriched += 1
+                except Exception:
+                    pass
+            results.append(lead)
 
-        await browser.close()
     return results
