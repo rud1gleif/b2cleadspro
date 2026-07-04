@@ -64,10 +64,24 @@ async def run_job(job_id: int) -> None:
                     tasks = []
                     for source in sources:
                         fn = SCRAPER_MAP.get(source)
-                        if fn:
-                            tasks.append(fn(location=location, niche=niche,
-                                           max_pages=job.max_pages if source != "gmaps" else 1,
-                                           semaphore=semaphore if source == "gmaps" else None))
+                        if not fn:
+                            continue
+                        if source == "gmaps":
+                            # gmaps uses max_results (pages * 20 results per page)
+                            tasks.append(fn(
+                                location=location,
+                                niche=niche,
+                                max_results=job.max_pages * 20,
+                                semaphore=semaphore,
+                            ))
+                        else:
+                            # directory scrapers use max_pages
+                            tasks.append(fn(
+                                location=location,
+                                niche=niche,
+                                max_pages=job.max_pages,
+                            ))
+
                     results = await asyncio.gather(*tasks, return_exceptions=True)
                     all_leads = []
                     for r in results:
