@@ -1,7 +1,8 @@
-"""Visit a website and extract email addresses — checks homepage + /contact."""
+"""Visit a website via NordVPN proxy and extract email addresses."""
 import re
 import httpx
 from typing import Optional
+from app.workers.proxy_config import PROXIES, BROWSER_HEADERS
 
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 BLOCKLIST = {
@@ -10,14 +11,6 @@ BLOCKLIST = {
     "w3.org", "googleapis.com", "gstatic.com", "cloudflare.com",
     "amazon.com", "facebook.com", "twitter.com", "instagram.com",
     "tiktok.com", "youtube.com", "linkedin.com",
-}
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
 }
 
 CONTACT_PATHS = ["/contact", "/contact-us", "/about", "/about-us", "/reach-us"]
@@ -34,16 +27,18 @@ def _pick_email(text: str) -> Optional[str]:
 
 
 async def extract_email_from_site(url: str) -> Optional[str]:
-    """Return the first clean email found on the site (homepage + contact page)."""
+    """Return the first clean email found on the site, routed through NordVPN."""
     if not url:
         return None
-    # normalise — strip trailing slash
     base = url.rstrip("/")
     pages_to_try = [base] + [base + p for p in CONTACT_PATHS]
 
     try:
         async with httpx.AsyncClient(
-            timeout=12, follow_redirects=True, headers=HEADERS
+            proxies=PROXIES,
+            headers=BROWSER_HEADERS,
+            timeout=12,
+            follow_redirects=True,
         ) as client:
             for page_url in pages_to_try:
                 try:

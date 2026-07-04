@@ -1,6 +1,6 @@
-"""Business data via OpenStreetMap Overpass API.
+"""Business data via OpenStreetMap Overpass API — routed through NordVPN.
 
-Fully free, no API key, no scraping, no blocks.
+Fully free, no API key, no blocks.
 Uses Nominatim to geocode the location, then Overpass to fetch
 businesses matching the niche within a radius.
 """
@@ -9,59 +9,55 @@ import re
 import httpx
 from typing import List, Optional
 from app.workers.email_extractor import extract_email_from_site
+from app.workers.proxy_config import PROXIES, BROWSER_HEADERS
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_URL  = "https://overpass-api.de/api/interpreter"
 
-# Map common niche keywords → OSM amenity/shop/craft tags
 NICHE_TAG_MAP = {
-    "plumber":       'amenity"="plumber',
-    "electrician":   'craft"="electrician',
-    "dentist":       'amenity"="dentist',
-    "restaurant":    'amenity"="restaurant',
-    "cafe":          'amenity"="cafe',
-    "gym":           'leisure"="fitness_centre',
-    "lawyer":        'amenity"="lawyers',
-    "doctor":        'amenity"="doctors',
-    "hair":          'shop"="hairdresser',
-    "salon":         'shop"="beauty',
-    "cleaner":       'shop"="dry_cleaning',
-    "mechanic":      'shop"="car_repair',
-    "real estate":   'office"="real_estate_agent',
-    "insurance":     'office"="insurance',
-    "accountant":    'office"="accountant',
-    "veterinarian":  'amenity"="veterinary',
-    "pharmacy":      'amenity"="pharmacy',
-    "hotel":         'tourism"="hotel',
-    "contractor":    'craft"="construction',
-    "painter":       'craft"="painter',
+    "plumber":      'craft"="plumber',
+    "electrician":  'craft"="electrician',
+    "dentist":      'amenity"="dentist',
+    "restaurant":   'amenity"="restaurant',
+    "cafe":         'amenity"="cafe',
+    "gym":          'leisure"="fitness_centre',
+    "lawyer":       'amenity"="lawyers',
+    "doctor":       'amenity"="doctors',
+    "hair":         'shop"="hairdresser',
+    "salon":        'shop"="beauty',
+    "cleaner":      'shop"="dry_cleaning',
+    "mechanic":     'shop"="car_repair',
+    "real estate":  'office"="real_estate_agent',
+    "insurance":    'office"="insurance',
+    "accountant":   'office"="accountant',
+    "veterinarian": 'amenity"="veterinary',
+    "pharmacy":     'amenity"="pharmacy',
+    "hotel":        'tourism"="hotel',
+    "contractor":   'craft"="construction',
+    "painter":      'craft"="painter',
 }
 
 HEADERS = {
-    "User-Agent": "B2CLeadsPro/1.0 (lead-generation-tool; contact: admin@example.com)",
-    "Accept": "application/json",
+    **BROWSER_HEADERS,
+    "User-Agent": "B2CLeadsPro/1.0 (lead-generation-tool)",
 }
 
 
 def _niche_to_osm_filter(niche: str) -> str:
-    """Convert a niche string to an OSM tag filter string."""
     if not niche:
         return 'amenity'
     niche_lower = niche.lower()
     for keyword, tag in NICHE_TAG_MAP.items():
         if keyword in niche_lower:
             return tag
-    # Fallback: search by name keyword across all nodes/ways
     return f'name~"{re.escape(niche)}",i'
 
 
 async def _geocode(location: str, client: httpx.AsyncClient) -> Optional[tuple]:
-    """Return (lat, lon) for a location string using Nominatim."""
     try:
         r = await client.get(
             NOMINATIM_URL,
             params={"q": location, "format": "json", "limit": 1},
-            headers=HEADERS,
             timeout=15,
         )
         data = r.json()
@@ -73,7 +69,6 @@ async def _geocode(location: str, client: httpx.AsyncClient) -> Optional[tuple]:
 
 
 async def _overpass_query(lat: float, lon: float, tag_filter: str, radius_m: int, client: httpx.AsyncClient) -> list:
-    """Run an Overpass QL query and return elements."""
     query = f"""
 [out:json][timeout:30];
 (
@@ -83,7 +78,7 @@ async def _overpass_query(lat: float, lon: float, tag_filter: str, radius_m: int
 out center tags;
 """
     try:
-        r = await client.post(OVERPASS_URL, data={"data": query}, headers=HEADERS, timeout=45)
+        r = await client.post(OVERPASS_URL, data={"data": query}, timeout=45)
         return r.json().get("elements", [])
     except Exception:
         return []
@@ -126,30 +121,25 @@ async def scrape_gmaps(
     max_results: int = 100,
     semaphore: Optional[asyncio.Semaphore] = None,
 ) -> List[dict]:
-    """Return business leads from OpenStreetMap for (location, niche)."""
     results: List[dict] = []
-    # Radius scales with max_results (roughly 500m per 20 results, capped at 50km)
     radius_m = min(500 + (max_results // 20) * 2000, 50000)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(proxies=PROXIES, headers=HEADERS, follow_redirects=True) as client:
         coords = await _geocode(location, client)
         if not coords:
             return []
         lat, lon = coords
 
         tag_filter = _niche_to_osm_filter(niche)
-        elements   = await _overpass_query(lat, lon, tag_filter, radius_m, client)
+        elements = await _overpass_query(lat, lon, tag_filter, radius_m, client)
 
-        # If niche tag returned nothing, widen to a generic business search
         if not elements and niche:
-            generic_filter = 'amenity,shop,craft,office,tourism,leisure'
             for tag_key in ["amenity", "shop", "craft", "office"]:
                 elems = await _overpass_query(lat, lon, tag_key, radius_m, client)
                 elements.extend(elems)
                 if len(elements) >= max_results:
                     break
 
-        # Enrich with emails from websites where missing
         enriched = 0
         for el in elements[:max_results]:
             lead = _extract_lead(el, location, niche)

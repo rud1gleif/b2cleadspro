@@ -1,8 +1,6 @@
-"""Directory scraper: Yelp, YellowPages, Angi.
+"""Directory scraper: Yelp, YellowPages, Angi — routed through NordVPN SOCKS5.
 
-Uses httpx + BeautifulSoup (no browser needed — these pages are server-rendered).
-For each source it fetches paginated search results and extracts:
-  name, phone, email, website, address.
+Uses httpx + BeautifulSoup. All requests go through the Nord proxy.
 """
 import asyncio
 import re
@@ -10,20 +8,21 @@ from typing import List, Optional
 import httpx
 from bs4 import BeautifulSoup
 from app.workers.email_extractor import extract_email_from_site
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-}
+from app.workers.proxy_config import PROXIES, BROWSER_HEADERS
 
 
 def _text(tag) -> Optional[str]:
-    """Safely get text from a BS4 tag, returns None if tag is None."""
     return tag.get_text(strip=True) if tag else None
+
+
+def _client() -> httpx.AsyncClient:
+    """Return an AsyncClient pre-configured with Nord proxy + browser headers."""
+    return httpx.AsyncClient(
+        proxies=PROXIES,
+        headers=BROWSER_HEADERS,
+        follow_redirects=True,
+        timeout=20,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +33,7 @@ async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str
     url = "https://www.yelp.com/search"
     params = {"find_desc": query, "find_loc": location, "start": offset}
     try:
-        r = await client.get(url, params=params, timeout=15)
+        r = await client.get(url, params=params)
         soup = BeautifulSoup(r.text, "lxml")
     except Exception:
         return []
@@ -58,7 +57,7 @@ async def _scrape_yelp_page(client: httpx.AsyncClient, query: str, location: str
 
 async def scrape_yelp(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
+    async with _client() as client:
         for page in range(max_pages):
             batch = await _scrape_yelp_page(client, niche, location, offset=page * 10)
             if not batch:
@@ -79,7 +78,7 @@ async def scrape_yelp(location: str, niche: str, max_pages: int = 3, **kwargs) -
 async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
     url = f"https://www.yellowpages.com/search?search_terms={query}&geo_location_terms={location}&page={page}"
     try:
-        r = await client.get(url, timeout=15)
+        r = await client.get(url)
         soup = BeautifulSoup(r.text, "lxml")
     except Exception:
         return []
@@ -101,7 +100,7 @@ async def _scrape_yp_page(client: httpx.AsyncClient, query: str, location: str, 
 
 async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
+    async with _client() as client:
         for page in range(1, max_pages + 1):
             batch = await _scrape_yp_page(client, niche, location, page)
             if not batch:
@@ -129,7 +128,7 @@ async def scrape_yellowpages(location: str, niche: str, max_pages: int = 3, **kw
 async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str, page: int) -> List[dict]:
     url = f"https://www.angi.com/companylist/{query.replace(' ', '-').lower()}/{location.replace(' ', '-').replace(',', '').lower()}-{page}.htm"
     try:
-        r = await client.get(url, timeout=15)
+        r = await client.get(url)
         soup = BeautifulSoup(r.text, "lxml")
     except Exception:
         return []
@@ -156,7 +155,7 @@ async def _scrape_angi_page(client: httpx.AsyncClient, query: str, location: str
 
 async def scrape_angi(location: str, niche: str, max_pages: int = 3, **kwargs) -> List[dict]:
     results = []
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True) as client:
+    async with _client() as client:
         for page in range(1, max_pages + 1):
             batch = await _scrape_angi_page(client, niche, location, page)
             if not batch:
