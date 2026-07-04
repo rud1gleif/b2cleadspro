@@ -11,11 +11,12 @@
     --primary: #2563eb; --primary-h: #1d4ed8;
     --green: #22c55e; --red: #ef4444; --yellow: #f59e0b;
     --gmaps: #2563eb; --yelp: #e11d48; --yp: #f59e0b; --angi: #f97316;
+    --gmail-c: #ea4335; --yahoo-c: #7e1fff; --outlook-c: #0078d4;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
          background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
-  #sidebar { width: 280px; min-width: 280px; background: var(--surface);
+  #sidebar { width: 290px; min-width: 290px; background: var(--surface);
              border-right: 1px solid var(--border); display: flex; flex-direction: column;
              padding: 16px; gap: 18px; overflow-y: auto; }
   .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; }
@@ -65,14 +66,39 @@
   .badge.pending { background: #292524; color: var(--yellow); }
   .job-meta { font-size: 11px; color: var(--muted); }
   #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-  #top-bar { padding: 16px 20px; border-bottom: 1px solid var(--border);
-             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  #top-bar { padding: 14px 20px; border-bottom: 1px solid var(--border);
+             display: flex; flex-direction: column; gap: 10px; }
+  .top-row1 { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
   .top-left h2 { font-size: 18px; font-weight: 700; }
   .top-left p  { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  /* ── Filter bar ── */
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
   .filter-btn { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border);
                 background: none; color: var(--muted); font-size: 12px; cursor: pointer; transition: all .15s; }
   .filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  /* Email-only toggle */
+  .toggle-wrap { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .toggle-wrap input[type=checkbox] { display: none; }
+  .toggle-pill { width: 34px; height: 18px; border-radius: 99px; background: var(--border); position: relative; transition: background .2s; flex-shrink: 0; }
+  .toggle-pill::after { content:''; position:absolute; top:2px; left:2px; width:14px; height:14px;
+                         border-radius:50%; background:#fff; transition: left .2s; }
+  .toggle-wrap input:checked + .toggle-pill { background: var(--green); }
+  .toggle-wrap input:checked + .toggle-pill::after { left: 18px; }
+  .toggle-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .toggle-wrap input:checked ~ .toggle-label { color: var(--green); font-weight: 600; }
+  /* Free-email provider pills */
+  .email-type-row { display: flex; gap: 6px; align-items: center; }
+  .email-pill { padding: 4px 11px; border-radius: 99px; border: 1px solid var(--border);
+                background: none; font-size: 11px; font-weight: 600; cursor: pointer;
+                color: var(--muted); transition: all .15s; }
+  .email-pill[data-ep=gmail].active  { background:#2d1210; color: var(--gmail-c);   border-color: var(--gmail-c); }
+  .email-pill[data-ep=yahoo].active  { background:#1e1030; color: var(--yahoo-c);   border-color: var(--yahoo-c); }
+  .email-pill[data-ep=outlook].active{ background:#0d1f30; color: var(--outlook-c); border-color: var(--outlook-c); }
+  #email-type-section { display: none; }
+  #email-type-section.visible { display: flex; align-items: center; gap: 8px; }
+  .count-chip { font-size: 11px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+  /* Table */
   .btn-export { background: var(--green); color: #fff; border: none; border-radius: 8px;
                 padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
   #table-wrap { flex: 1; overflow: auto; }
@@ -88,6 +114,11 @@
   .src-badge.yelp        { background: #450a0a; color: #fca5a5; }
   .src-badge.yellowpages { background: #451a03; color: #fcd34d; }
   .src-badge.angi        { background: #431407; color: #fb923c; }
+  /* email-provider dot in table */
+  .ep-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:4px; vertical-align:middle; }
+  .ep-gmail   { background: var(--gmail-c); }
+  .ep-yahoo   { background: var(--yahoo-c); }
+  .ep-outlook { background: var(--outlook-c); }
   .empty { text-align: center; padding: 60px; color: var(--muted); }
   a { color: #60a5fa; text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -131,23 +162,51 @@
     <div class="jobs-list" id="jobs-list"></div>
   </div>
 </aside>
+
 <main id="main">
   <div id="top-bar">
-    <div class="top-left">
-      <h2 id="job-title">No job selected</h2>
-      <p id="job-meta"></p>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <div class="filter-row">
-        <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
-        <button class="filter-btn" data-filter="gmaps" onclick="setFilter('gmaps')">gmaps</button>
-        <button class="filter-btn" data-filter="yelp" onclick="setFilter('yelp')">yelp</button>
-        <button class="filter-btn" data-filter="yellowpages" onclick="setFilter('yellowpages')">yellowpages</button>
-        <button class="filter-btn" data-filter="angi" onclick="setFilter('angi')">angi</button>
+    <!-- Row 1: job title + export -->
+    <div class="top-row1">
+      <div class="top-left">
+        <h2 id="job-title">No job selected</h2>
+        <p id="job-meta"></p>
       </div>
       <button class="btn-export" onclick="exportCSV()">&#8595; Export CSV</button>
     </div>
+
+    <!-- Row 2: source filter + separator + email-only toggle -->
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+      <button class="filter-btn" data-filter="gmaps" onclick="setFilter('gmaps')">gmaps</button>
+      <button class="filter-btn" data-filter="yelp" onclick="setFilter('yelp')">yelp</button>
+      <button class="filter-btn" data-filter="yellowpages" onclick="setFilter('yellowpages')">yellowpages</button>
+      <button class="filter-btn" data-filter="angi" onclick="setFilter('angi')">angi</button>
+
+      <div class="filter-sep"></div>
+
+      <!-- Email-only toggle -->
+      <label class="toggle-wrap" title="Only show leads that have an email address">
+        <input type="checkbox" id="chk-email-only" onchange="onEmailOnlyToggle()">
+        <span class="toggle-pill"></span>
+        <span class="toggle-label">With Email Only</span>
+      </label>
+
+      <div class="filter-sep"></div>
+
+      <!-- Provider pills (shown only when email-only is ON) -->
+      <div id="email-type-section">
+        <span style="font-size:11px;color:var(--muted);white-space:nowrap;">Provider:</span>
+        <div class="email-type-row">
+          <button class="email-pill" data-ep="gmail"  onclick="toggleProvider('gmail')">Gmail</button>
+          <button class="email-pill" data-ep="yahoo"  onclick="toggleProvider('yahoo')">Yahoo</button>
+          <button class="email-pill" data-ep="outlook" onclick="toggleProvider('outlook')">Outlook</button>
+        </div>
+      </div>
+
+      <span class="count-chip" id="count-chip"></span>
+    </div>
   </div>
+
   <div id="table-wrap">
     <table>
       <thead><tr>
@@ -160,12 +219,33 @@
     <div class="empty" id="empty-msg">Select or launch a job to see leads.</div>
   </div>
 </main>
+
 <script>
 var API = '';
-var currentJobId = null, allLeads = [], currentFilter = 'all', pollTimer = null, locations = [];
+var currentJobId = null, allLeads = [], currentFilter = 'all';
+var emailOnlyActive = false;
+var activeProviders = new Set(); // gmail / yahoo / outlook
+var pollTimer = null, locations = [];
+
 var locInput = document.getElementById('loc-input');
 var locWrap = document.getElementById('loc-wrap');
 
+// ── free-email provider detection ──
+var PROVIDER_DOMAINS = {
+  gmail:   ['gmail.com'],
+  yahoo:   ['yahoo.com','ymail.com'],
+  outlook: ['outlook.com','hotmail.com','live.com']
+};
+function emailProvider(email) {
+  if (!email) return null;
+  var domain = email.trim().toLowerCase().split('@').pop();
+  for (var p in PROVIDER_DOMAINS) {
+    if (PROVIDER_DOMAINS[p].indexOf(domain) >= 0) return p;
+  }
+  return null;
+}
+
+// ── location tags ──
 locInput.addEventListener('keydown', function(e) {
   if ((e.key === 'Enter' || e.key === ',') && locInput.value.trim()) {
     e.preventDefault();
@@ -175,35 +255,55 @@ locInput.addEventListener('keydown', function(e) {
     removeLocation(locations[locations.length - 1]);
   }
 });
-
 function addLocation(city) {
   if (!city || locations.indexOf(city) >= 0) return;
   locations.push(city);
   var tag = document.createElement('div');
-  tag.className = 'tag';
-  tag.dataset.city = city;
+  tag.className = 'tag'; tag.dataset.city = city;
   var x = document.createElement('button');
-  x.textContent = 'x';
-  x.onclick = function() { removeLocation(city); };
+  x.textContent = 'x'; x.onclick = function() { removeLocation(city); };
   tag.appendChild(document.createTextNode(city + ' '));
   tag.appendChild(x);
   locWrap.insertBefore(tag, locInput);
 }
-
 function removeLocation(city) {
   locations = locations.filter(function(l) { return l !== city; });
   var el = locWrap.querySelector('[data-city="' + CSS.escape(city) + '"]');
   if (el) el.remove();
 }
 
+// ── source buttons ──
 document.querySelectorAll('.src-btn').forEach(function(btn) {
   btn.addEventListener('click', function() { btn.classList.toggle('active'); });
 });
-
 function getActiveSources() {
   return Array.from(document.querySelectorAll('.src-btn.active')).map(function(b) { return b.dataset.src; });
 }
 
+// ── email-only toggle ──
+function onEmailOnlyToggle() {
+  emailOnlyActive = document.getElementById('chk-email-only').checked;
+  var sec = document.getElementById('email-type-section');
+  if (emailOnlyActive) {
+    sec.classList.add('visible');
+  } else {
+    sec.classList.remove('visible');
+    // clear provider selection
+    activeProviders.clear();
+    document.querySelectorAll('.email-pill').forEach(function(p) { p.classList.remove('active'); });
+  }
+  renderTable();
+}
+
+// ── provider pills ──
+function toggleProvider(p) {
+  if (activeProviders.has(p)) { activeProviders.delete(p); }
+  else { activeProviders.add(p); }
+  document.querySelector('.email-pill[data-ep=' + p + ']').classList.toggle('active', activeProviders.has(p));
+  renderTable();
+}
+
+// ── launch job ──
 function launchJob() {
   if (!locations.length) { alert('Please add at least one location.'); return; }
   var sources = getActiveSources();
@@ -211,15 +311,12 @@ function launchJob() {
   var nichesRaw = document.getElementById('niches').value.trim();
   var nichesList = nichesRaw ? nichesRaw.split(',').map(function(n) { return n.trim(); }).filter(Boolean) : null;
   var btn = document.getElementById('btn-launch');
-  btn.disabled = true;
-  btn.textContent = 'Launching...';
+  btn.disabled = true; btn.textContent = 'Launching...';
   fetch(API + '/api/jobs/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      locations: locations,
-      niches: nichesList,
-      sources: sources,
+      locations: locations, niches: nichesList, sources: sources,
       max_pages: parseInt(document.getElementById('max-pages').value) || 10,
       concurrency: parseInt(document.getElementById('concurrency').value) || 3
     })
@@ -228,14 +325,11 @@ function launchJob() {
     return r.json();
   }).then(function(job) {
     loadJob(job.id); loadJobs();
-  }).catch(function(e) {
-    alert('Failed: ' + e);
-  }).finally(function() {
-    btn.disabled = false;
-    btn.innerHTML = '&#128640; Launch Job';
-  });
+  }).catch(function(e) { alert('Failed: ' + e); })
+  .finally(function() { btn.disabled = false; btn.innerHTML = '&#128640; Launch Job'; });
 }
 
+// ── job loading ──
 function loadJob(id) {
   clearInterval(pollTimer);
   currentJobId = id;
@@ -258,9 +352,9 @@ function loadJob(id) {
 }
 
 function fetchLeads(id) {
-  fetch(API + '/api/leads/?job_id=' + id + '&limit=5000').then(function(r) { return r.json(); }).then(function(data) {
-    allLeads = data; renderTable();
-  });
+  fetch(API + '/api/leads/?job_id=' + id + '&limit=5000')
+    .then(function(r) { return r.json(); })
+    .then(function(data) { allLeads = data; renderTable(); });
 }
 
 function updateJobMeta(job) {
@@ -286,6 +380,7 @@ function loadJobs() {
   });
 }
 
+// ── source filter ──
 function setFilter(f) {
   currentFilter = f;
   document.querySelectorAll('.filter-btn').forEach(function(b) {
@@ -294,23 +389,51 @@ function setFilter(f) {
   renderTable();
 }
 
+// ── render table (ALL filtering happens here, client-side) ──
 function renderTable() {
-  var rows = currentFilter === 'all' ? allLeads : allLeads.filter(function(l) { return l.source === currentFilter; });
+  var rows = allLeads;
+
+  // 1. source filter
+  if (currentFilter !== 'all') {
+    rows = rows.filter(function(l) { return l.source === currentFilter; });
+  }
+
+  // 2. email-only — strictly enforced: no email = hidden
+  if (emailOnlyActive) {
+    rows = rows.filter(function(l) { return l.email && l.email.trim() !== ''; });
+  }
+
+  // 3. provider filter (only when email-only is on and at least one provider selected)
+  if (emailOnlyActive && activeProviders.size > 0) {
+    rows = rows.filter(function(l) {
+      return activeProviders.has(emailProvider(l.email));
+    });
+  }
+
   var tbody = document.getElementById('tbody');
   var empty = document.getElementById('empty-msg');
+  var chip  = document.getElementById('count-chip');
+
+  chip.textContent = rows.length + ' lead' + (rows.length !== 1 ? 's' : '');
+
   if (!rows.length) {
     tbody.innerHTML = '';
     empty.style.display = '';
-    empty.textContent = allLeads.length ? 'No leads for this filter.' : 'No leads yet - job is running...';
+    empty.textContent = allLeads.length
+      ? (emailOnlyActive ? 'No leads with email match the current filters.' : 'No leads for this filter.')
+      : 'No leads yet \u2014 job is running...';
     return;
   }
   empty.style.display = 'none';
+
   tbody.innerHTML = rows.map(function(l) {
+    var ep = emailProvider(l.email);
+    var epDot = ep ? '<span class="ep-dot ep-' + ep + '" title="' + ep + '"></span>' : '';
     return '<tr>'
       + '<td><span class="src-badge ' + l.source + '">' + l.source + '</span></td>'
       + '<td>' + (l.name || '-') + '</td>'
       + '<td>' + (l.phone || '-') + '</td>'
-      + '<td>' + (l.email ? '<a href="mailto:' + l.email + '">' + l.email + '</a>' : '-') + '</td>'
+      + '<td>' + (l.email ? epDot + '<a href="mailto:' + l.email + '">' + l.email + '</a>' : '-') + '</td>'
       + '<td>' + (l.website ? '<a href="' + l.website + '" target="_blank" rel="noopener">link</a>' : '-') + '</td>'
       + '<td>' + (l.address || '-') + '</td>'
       + '<td>' + (l.rating || '-') + '</td>'
@@ -321,17 +444,22 @@ function renderTable() {
   }).join('');
 }
 
+// ── export (respects active filters) ──
 function exportCSV() {
-  var rows = currentFilter === 'all' ? allLeads : allLeads.filter(function(l) { return l.source === currentFilter; });
+  var rows = allLeads;
+  if (currentFilter !== 'all') rows = rows.filter(function(l) { return l.source === currentFilter; });
+  if (emailOnlyActive) rows = rows.filter(function(l) { return l.email && l.email.trim() !== ''; });
+  if (emailOnlyActive && activeProviders.size > 0) {
+    rows = rows.filter(function(l) { return activeProviders.has(emailProvider(l.email)); });
+  }
   if (!rows.length) { alert('No leads to export.'); return; }
   var cols = ['source','name','phone','email','website','address','rating','category','location','niche'];
   var lines = [cols.join(',')];
   rows.forEach(function(r) {
     lines.push(cols.map(function(c) { return '"' + String(r[c] || '').replace(/"/g, '""') + '"'; }).join(','));
   });
-  var csv = lines.join('\n');
   var a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
   a.download = 'leads_job_' + currentJobId + '.csv';
   a.click();
 }
