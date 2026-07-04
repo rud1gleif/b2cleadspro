@@ -208,6 +208,8 @@ function launchJob() {
   if (!locations.length) { alert('Please add at least one location.'); return; }
   var sources = getActiveSources();
   if (!sources.length) { alert('Select at least one source.'); return; }
+  var nichesRaw = document.getElementById('niches').value.trim();
+  var nichesList = nichesRaw ? nichesRaw.split(',').map(function(n) { return n.trim(); }).filter(Boolean) : null;
   var btn = document.getElementById('btn-launch');
   btn.disabled = true;
   btn.textContent = 'Launching...';
@@ -216,18 +218,21 @@ function launchJob() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       locations: locations,
-      niches: document.getElementById('niches').value,
-      sources: sources.join(','),
+      niches: nichesList,
+      sources: sources,
       max_pages: parseInt(document.getElementById('max-pages').value) || 10,
       concurrency: parseInt(document.getElementById('concurrency').value) || 3
     })
-  }).then(function(r) { return r.json(); }).then(function(job) {
+  }).then(function(r) {
+    if (!r.ok) return r.text().then(function(t) { throw new Error(r.status + ': ' + t); });
+    return r.json();
+  }).then(function(job) {
     loadJob(job.id); loadJobs();
   }).catch(function(e) {
     alert('Failed: ' + e);
   }).finally(function() {
     btn.disabled = false;
-    btn.textContent = 'Launch Job';
+    btn.innerHTML = '&#128640; Launch Job';
   });
 }
 
