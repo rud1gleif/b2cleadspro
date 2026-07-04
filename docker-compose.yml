@@ -1,131 +1,36 @@
 version: "3.9"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# B2C Leads Pro — full stack
-#
-# Services:
-#   postgres      PostgreSQL 16 (primary database)
-#   redis         Redis 7       (job queue + status cache)
-#   reacher       Reacher       (self-hosted SMTP verifier, no API key needed)
-#   api           FastAPI app   (dashboard + REST API)
-#   worker        Queue dispatcher (scrape + verify workers)
-#
-# Quick start:
-#   cp .env.example .env
-#   docker compose up --build
-#   open http://localhost:8000
-# ─────────────────────────────────────────────────────────────────────────────
-
 services:
-
-  # ── PostgreSQL ──────────────────────────────────────────────────────────────
-  postgres:
+  db:
     image: postgres:16-alpine
-    container_name: b2c_postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-b2cleads}
-      POSTGRES_USER:     ${POSTGRES_USER:-b2cuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-b2cpassword}
+      POSTGRES_USER: b2c
+      POSTGRES_PASSWORD: b2cpass
+      POSTGRES_DB: b2cleads
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-b2cuser} -d ${POSTGRES_DB:-b2cleads}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U b2c -d b2cleads"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  # ── Redis ───────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: b2c_redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  # ── Reacher (SMTP verifier) ─────────────────────────────────────────────────
-  reacher:
-    image: reacherhq/backend:latest
-    container_name: b2c_reacher
-    restart: unless-stopped
-    environment:
-      RCH_PROXY_HOST:      ""
-      RCH_PROXY_PORT:      ""
-      RCH_FROM_EMAIL:      ${REACHER_FROM_EMAIL:-verify@example.com}
-      RCH_HELLO_NAME:      ${REACHER_HELLO_NAME:-example.com}
-      RUST_LOG:            warn
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v0/check_email", "-X", "POST",
-             "-H", "Content-Type: application/json", "-d", '{"to_email":"health@check.invalid"}']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-
-  # ── API (FastAPI + Dashboard) ───────────────────────────────────────────────
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: b2c_api
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATABASE_URL:  postgresql://${POSTGRES_USER:-b2cuser}:${POSTGRES_PASSWORD:-b2cpassword}@postgres:5432/${POSTGRES_DB:-b2cleads}
-      REDIS_URL:     redis://redis:6379/0
-      REACHER_URL:   http://reacher:8080
+    build: .
     ports:
       - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://b2c:b2cpass@db:5432/b2cleads
+      CONCURRENCY: 5
+      MAX_PAGES: 10
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
+      db:
         condition: service_healthy
     volumes:
-      - ./data:/app/data
-    command: >
-      sh -c "
-        alembic upgrade head &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
-      "
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-  # ── Queue Dispatcher (background worker) ───────────────────────────────────
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: b2c_worker
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-b2cuser}:${POSTGRES_PASSWORD:-b2cpassword}@postgres:5432/${POSTGRES_DB:-b2cleads}
-      REDIS_URL:    redis://redis:6379/0
-      REACHER_URL:  http://reacher:8080
-    depends_on:
-      api:
-        condition: service_healthy
-    command: python -m app.workers.queue_dispatcher
+      - .:/app
+      - /app/.venv
 
 volumes:
-  postgres_data:
-  redis_data:
+  pgdata:

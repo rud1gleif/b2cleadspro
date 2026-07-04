@@ -1,90 +1,45 @@
-"""Jobs API router — create, list, get, cancel."""
+import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from typing import List
-import uuid
-
 from app.database import get_db
-from app.models.job import SearchJob
-from app.schemas.job import JobCreate, JobRead, JobUpdate
-from app.services.queue_service import enqueue_job, get_job_status, queue_length
-from app.config import settings
+from app.models.job import Job
+from app.schemas.job import JobCreate, JobOut
+from app.workers.job_runner import run_job
 
-router = APIRouter()
+router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
-@router.post("/", response_model=JobRead, status_code=201)
+@router.post("/", response_model=JobOut, status_code=201)
 async def create_job(
     payload: JobCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create and enqueue a scrape job."""
-    job = SearchJob(
-        location_id=payload.location_id,
-        source_types=payload.source_types,
-        keywords=payload.keywords,
-        proxy_mode=payload.proxy_mode or "rotating_residential",
+    job = Job(
+        locations=json.dumps(payload.locations),
+        niches=",".join(payload.niches) if payload.niches else None,
+        sources=",".join(payload.sources),
+        max_pages=payload.max_pages,
+        concurrency=payload.concurrency,
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
-
-    enqueue_job(settings.redis_queue_scrape, {"job_id": str(job.id)})
+    background_tasks.add_task(run_job, job.id)
     return job
 
 
-@router.get("/", response_model=List[JobRead])
+@router.get("/", response_model=list[JobOut])
 async def list_jobs(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SearchJob).order_by(desc(SearchJob.created_at)).limit(100))
+    result = await db.execute(select(Job).order_by(desc(Job.created_at)).limit(50))
     return result.scalars().all()
 
 
-@router.get("/queue-stats", summary="Redis queue depths")
-def queue_stats():
-    return {
-        "scrape_queue": queue_length(settings.redis_queue_scrape),
-        "verify_queue": queue_length(settings.redis_queue_verify),
-        "discovery_queue": queue_length(settings.redis_queue_discovery),
-    }
-
-
-@router.get("/{job_id}", response_model=JobRead)
-async def get_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SearchJob).where(SearchJob.id == job_id))
-    job = result.scalar_one_or_none()
+@router.get("/{job_id}", response_model=JobOut)
+async def get_job(job_id: int, db: AsyncSession = Depends(get_db)):
+    job = await db.get(Job, job_id)
     if not job:
         raise HTTPException(404, "Job not found")
     return job
-
-
-@router.get("/{job_id}/status", summary="Live job status from Redis")
-def job_live_status(job_id: uuid.UUID):
-    status = get_job_status(str(job_id))
-    if not status:
-        raise HTTPException(404, "No live status found")
-    return status
-
-
-@router.patch("/{job_id}", response_model=JobRead)
-async def update_job(job_id: uuid.UUID, payload: JobUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SearchJob).where(SearchJob.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(404, "Job not found")
-    for k, v in payload.dict(exclude_none=True).items():
-        setattr(job, k, v)
-    await db.commit()
-    await db.refresh(job)
-    return job
-
-
-@router.delete("/{job_id}", status_code=204)
-async def cancel_job(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SearchJob).where(SearchJob.id == job_id))
-    job = result.scalar_one_or_none()
-    if not job:
-        raise HTTPException(404, "Job not found")
-    job.status = "cancelled"
-    await db.commit()

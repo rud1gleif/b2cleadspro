@@ -1,221 +1,417 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>B2C Leads Pro</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B2C Leads Pro</title>
+<style>
+  :root {
+    --bg: #0f0f11;
+    --surface: #18181c;
+    --surface2: #1e1e24;
+    --border: #2a2a35;
+    --text: #e2e2e8;
+    --muted: #7a7a8c;
+    --faint: #3a3a4a;
+    --accent: #6c63ff;
+    --accent-h: #574dff;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --radius: 10px;
+    --font: 'Inter', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; min-height: 100vh; }
+
+  /* Layout */
+  .app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 24px 20px; display: flex; flex-direction: column; gap: 20px; }
+  .main { padding: 28px 32px; overflow-y: auto; }
+
+  /* Logo */
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .logo svg { flex-shrink: 0; }
+
+  /* Form */
+  .form-section { display: flex; flex-direction: column; gap: 14px; }
+  label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 5px; }
+  input[type=text], input[type=number] {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); padding: 9px 12px; font-size: 14px; outline: none; transition: border-color 0.15s;
+  }
+  input:focus { border-color: var(--accent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* Tag input */
+  .tag-input-wrap { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 6px; cursor: text; transition: border-color 0.15s; }
+  .tag-input-wrap:focus-within { border-color: var(--accent); }
+  .tag { background: var(--accent); color: #fff; border-radius: 6px; padding: 3px 8px 3px 10px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .tag button { background: none; border: none; color: rgba(255,255,255,0.7); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; }
+  .tag-input-wrap input { background: none; border: none; outline: none; color: var(--text); font-size: 13px; min-width: 120px; flex: 1; padding: 3px 4px; }
+
+  /* Source toggles */
+  .source-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .source-toggle { background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 8px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.15s; user-select: none; font-size: 13px; font-weight: 500; }
+  .source-toggle.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface2)); color: #fff; }
+  .source-toggle .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex-shrink: 0; transition: background 0.15s; }
+  .source-toggle.active .dot { background: var(--accent); }
+
+  /* Button */
+  .btn-launch { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: background 0.15s, transform 0.1s; letter-spacing: 0.2px; }
+  .btn-launch:hover { background: var(--accent-h); }
+  .btn-launch:active { transform: scale(0.98); }
+  .btn-launch:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Jobs list */
+  .section-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; }
+  .jobs-list { display: flex; flex-direction: column; gap: 8px; }
+  .job-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; transition: border-color 0.15s; }
+  .job-card:hover, .job-card.active { border-color: var(--accent); }
+  .job-card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .job-id { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .badge { font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 8px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .badge.pending { background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); }
+  .badge.running { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+  .badge.done { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+  .badge.error { background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); }
+  .job-meta { font-size: 12px; color: var(--muted); }
+
+  /* Main panel */
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; color: var(--muted); gap: 12px; text-align: center; }
+  .empty-state svg { opacity: 0.3; }
+  .empty-state p { font-size: 14px; }
+
+  /* Leads panel */
+  .leads-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: gap; gap: 12px; }
+  .leads-title { font-size: 20px; font-weight: 700; }
+  .leads-meta { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter-btn { background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface2)); }
+  .btn-export { background: var(--green); color: #000; border: none; border-radius: 8px; padding: 7px 16px; font-size: 12px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+  .btn-export:hover { opacity: 0.85; }
+
+  /* Progress bar */
+  .progress-wrap { background: var(--surface2); border-radius: 4px; height: 4px; overflow: hidden; margin-bottom: 20px; }
+  .progress-bar { height: 100%; background: var(--accent); transition: width 0.4s; border-radius: 4px; width: 0%; }
+  .progress-bar.indeterminate { animation: indeterminate 1.4s ease-in-out infinite; }
+  @keyframes indeterminate { 0%{transform:translateX(-100%) scaleX(0.5)} 50%{transform:translateX(0%) scaleX(0.6)} 100%{transform:translateX(200%) scaleX(0.5)} }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { background: var(--surface2); }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .source-pill { font-size: 10px; font-weight: 700; border-radius: 5px; padding: 2px 7px; text-transform: uppercase; }
+  .source-pill.gmaps { background: #1a3a2a; color: #4ade80; }
+  .source-pill.yelp { background: #3a1a1a; color: #f87171; }
+  .source-pill.yellowpages { background: #3a2e00; color: #fbbf24; }
+  .source-pill.angi { background: #1a2040; color: #818cf8; }
+  .cell-link { color: var(--accent); text-decoration: none; } .cell-link:hover { text-decoration: underline; }
+  .cell-email { color: var(--green); font-size: 12px; }
+  .no-leads { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    .main { padding: 20px 16px; }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+<div class="app">
 
-<!-- SIDEBAR -->
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-logo">
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" aria-label="B2C Leads Pro">
-      <rect width="32" height="32" rx="8" fill="var(--color-primary)"/>
-      <path d="M8 10h7c2.2 0 4 1.8 4 4s-1.8 4-4 4H8V10z" fill="white" opacity=".9"/>
-      <path d="M8 18h8c2.4 0 4.5 2 4.5 4.5S18.4 27 16 27H8V18z" fill="white"/>
-      <circle cx="22" cy="12" r="3.5" fill="white" opacity=".6"/>
-    </svg>
-    <span class="sidebar-logo-text">B2C Leads Pro</span>
-  </div>
-
-  <nav class="sidebar-nav">
-    <a href="#" class="nav-item active" data-page="dashboard" onclick="showPage('dashboard',this)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      Dashboard
-    </a>
-    <a href="#" class="nav-item" data-page="new-job" onclick="showPage('new-job',this)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      New Job
-    </a>
-    <a href="#" class="nav-item" data-page="jobs" onclick="showPage('jobs',this)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      Jobs
-    </a>
-    <a href="#" class="nav-item" data-page="leads" onclick="showPage('leads',this)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      Leads
-    </a>
-    <a href="#" class="nav-item" data-page="proxies" onclick="showPage('proxies',this)">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-      Proxies
-    </a>
-  </nav>
-
-  <div class="sidebar-footer">
-    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
-      <svg id="theme-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-    </button>
-    <a href="/docs" target="_blank" class="docs-link">API Docs ↗</a>
-  </div>
-</aside>
-
-<!-- MAIN -->
-<main class="main-content">
-
-  <!-- DASHBOARD PAGE -->
-  <div id="page-dashboard" class="page active">
-    <div class="page-header">
-      <h1>Dashboard</h1>
-      <span class="badge badge-live" id="status-badge">● Live</span>
-    </div>
-    <div class="kpi-grid" id="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-label">Total Leads</div>
-        <div class="kpi-value" id="kpi-total-leads">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Verified Leads</div>
-        <div class="kpi-value" id="kpi-verified">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Active Jobs</div>
-        <div class="kpi-value" id="kpi-active-jobs">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Active Proxies</div>
-        <div class="kpi-value" id="kpi-proxies">—</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-label">Queue Depth</div>
-        <div class="kpi-value" style="font-size:var(--text-sm)" id="kpi-queue">—</div>
-      </div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        <rect width="28" height="28" rx="7" fill="#6c63ff"/>
+        <circle cx="14" cy="11" r="4" fill="white"/>
+        <path d="M6 22c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <path d="M19 8l2 2-2 2" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      B2C Leads Pro
     </div>
 
-    <div class="section-header">
-      <h2>Recent Jobs</h2>
-      <button class="btn btn-sm btn-ghost" onclick="loadDashboard()">↻ Refresh</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>ID</th><th>Status</th><th>Locations</th><th>Progress</th><th>Leads</th><th>Pages</th><th>Created</th><th></th></tr></thead>
-        <tbody id="dashboard-jobs-body"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- NEW JOB PAGE -->
-  <div id="page-new-job" class="page">
-    <div class="page-header"><h1>New Scrape Job</h1></div>
-    <div class="card form-card">
-      <div class="form-group">
-        <label>Locations <span class="hint">(search & add multiple)</span></label>
-        <div class="location-search-wrap">
-          <input type="text" id="location-search" placeholder="Type city or country…" oninput="searchLocations()" autocomplete="off" />
-          <div class="location-dropdown" id="location-dropdown"></div>
+    <div class="form-section">
+      <div>
+        <label>Locations</label>
+        <div class="tag-input-wrap" id="loc-wrap">
+          <input id="loc-input" type="text" placeholder="Type city + Enter" autocomplete="off">
         </div>
-        <div class="location-tags" id="location-tags"></div>
       </div>
 
-      <div class="form-group">
-        <label>Niches <span class="hint">(optional — comma separated)</span></label>
-        <input type="text" id="job-niches" placeholder="e.g. fitness, dental, real estate" />
+      <div>
+        <label>Niches <span style="color:var(--faint);font-size:10px;text-transform:none;letter-spacing:0">(optional — comma separated)</span></label>
+        <input type="text" id="niches-input" placeholder="plumber, roofer, dentist">
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
+      <div>
+        <label>Sources</label>
+        <div class="source-grid">
+          <div class="source-toggle active" data-source="gmaps">
+            <span class="dot"></span> Google Maps
+          </div>
+          <div class="source-toggle active" data-source="yelp">
+            <span class="dot"></span> Yelp
+          </div>
+          <div class="source-toggle active" data-source="yellowpages">
+            <span class="dot"></span> YellowPages
+          </div>
+          <div class="source-toggle active" data-source="angi">
+            <span class="dot"></span> Angi
+          </div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div>
           <label>Max Pages</label>
-          <input type="number" id="job-max-pages" value="50" min="1" max="500" />
+          <input type="number" id="max-pages" value="5" min="1" max="50">
         </div>
-        <div class="form-group">
+        <div>
           <label>Concurrency</label>
-          <input type="number" id="job-concurrency" value="5" min="1" max="10" />
+          <input type="number" id="concurrency" value="3" min="1" max="10">
         </div>
       </div>
 
-      <div class="form-actions">
-        <button class="btn btn-primary" onclick="submitJob()">🚀 Launch Job</button>
-        <span id="job-submit-msg" class="form-msg"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- JOBS PAGE -->
-  <div id="page-jobs" class="page">
-    <div class="page-header">
-      <h1>Jobs</h1>
-      <button class="btn btn-sm btn-ghost" onclick="loadJobs()">↻ Refresh</button>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>ID</th><th>Status</th><th>Locations</th><th>Niches</th><th>Progress</th><th>Leads</th><th>Pages</th><th>Started</th><th>Finished</th><th></th></tr></thead>
-        <tbody id="jobs-body"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- LEADS PAGE -->
-  <div id="page-leads" class="page">
-    <div class="page-header">
-      <h1>Leads</h1>
-      <button class="btn btn-primary btn-sm" onclick="exportLeads()">⬇ Export CSV</button>
+      <button class="btn-launch" id="btn-launch">🚀 Launch Job</button>
     </div>
 
-    <div class="filter-bar">
-      <input type="text" id="filter-country" placeholder="Country code (US)" maxlength="3" />
-      <input type="text" id="filter-city" placeholder="City" />
-      <input type="text" id="filter-niche" placeholder="Niche" />
-      <select id="filter-verified">
-        <option value="">All</option>
-        <option value="true">Verified only</option>
-        <option value="false">Unverified only</option>
-      </select>
-      <input type="number" id="filter-min-score" placeholder="Min score" min="0" max="100" />
-      <button class="btn btn-primary btn-sm" onclick="loadLeads(1)">Filter</button>
-      <button class="btn btn-ghost btn-sm" onclick="clearFilters()">Clear</button>
+    <div style="margin-top:8px">
+      <div class="section-title">Recent Jobs</div>
+      <div class="jobs-list" id="jobs-list"></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main" id="main-panel">
+    <div class="empty-state" id="empty-state">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <p>Launch a job to start collecting leads</p>
     </div>
 
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Email</th><th>Name</th><th>City</th><th>Country</th><th>Niche</th><th>Score</th><th>Verified</th><th>Source</th><th>Job</th></tr></thead>
-        <tbody id="leads-body"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <div class="pagination" id="leads-pagination"></div>
-  </div>
-
-  <!-- PROXIES PAGE -->
-  <div id="page-proxies" class="page">
-    <div class="page-header">
-      <h1>Proxies</h1>
-      <button class="btn btn-sm btn-ghost" onclick="loadProxies()">↻ Refresh</button>
-    </div>
-
-    <div class="card form-card">
-      <h3 style="margin-bottom:var(--space-4)">Add Proxy</h3>
-      <div class="form-row">
-        <div class="form-group"><label>Host</label><input type="text" id="proxy-host" placeholder="192.168.1.1" /></div>
-        <div class="form-group"><label>Port</label><input type="number" id="proxy-port" placeholder="8080" /></div>
-        <div class="form-group">
-          <label>Protocol</label>
-          <select id="proxy-protocol"><option>http</option><option>https</option><option>socks5</option></select>
+    <div id="leads-panel" style="display:none">
+      <div class="leads-header">
+        <div>
+          <div class="leads-title" id="leads-title">Leads</div>
+          <div class="leads-meta" id="leads-meta"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="filter-bar" id="filter-bar"></div>
+          <button class="btn-export" id="btn-export">⬇ Export CSV</button>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Username</label><input type="text" id="proxy-username" placeholder="optional" /></div>
-        <div class="form-group"><label>Password</label><input type="password" id="proxy-password" placeholder="optional" /></div>
-        <div class="form-group"><label>Country Code</label><input type="text" id="proxy-country" placeholder="US" maxlength="3" /></div>
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-bar indeterminate" id="progress-bar"></div>
       </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" onclick="addProxy()">Add Proxy</button>
-        <span id="proxy-msg" class="form-msg"></span>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th><th>Name</th><th>Phone</th><th>Email</th>
+              <th>Website</th><th>Address</th><th>Rating</th><th>Category</th><th>Location</th><th>Niche</th>
+            </tr>
+          </thead>
+          <tbody id="leads-tbody"></tbody>
+        </table>
+        <div class="no-leads" id="no-leads" style="display:none">No leads yet — job is running...</div>
       </div>
     </div>
+  </main>
+</div>
 
-    <div class="table-wrap" style="margin-top:var(--space-6)">
-      <table>
-        <thead><tr><th>Host</th><th>Port</th><th>Protocol</th><th>Country</th><th>Active</th><th>Latency</th><th>Fails</th><th>Last Checked</th><th></th></tr></thead>
-        <tbody id="proxies-body"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-  </div>
+<script>
+const API = '';
+let locations = [];
+let activeJobId = null;
+let pollTimer = null;
+let activeSource = 'all';
 
-</main>
+// ── Tag input ──
+const locInput = document.getElementById('loc-input');
+const locWrap = document.getElementById('loc-wrap');
 
-<script src="/static/app.js"></script>
+function addLocation(val) {
+  val = val.trim();
+  if (!val || locations.includes(val)) return;
+  locations.push(val);
+  renderTags();
+}
+
+function renderTags() {
+  locWrap.querySelectorAll('.tag').forEach(t => t.remove());
+  locations.forEach(loc => {
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.innerHTML = `${loc} <button onclick="removeLocation('${loc}')">×</button>`;
+    locWrap.insertBefore(tag, locInput);
+  });
+}
+
+function removeLocation(val) {
+  locations = locations.filter(l => l !== val);
+  renderTags();
+}
+
+locInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    addLocation(locInput.value);
+    locInput.value = '';
+  }
+  if (e.key === 'Backspace' && locInput.value === '' && locations.length) {
+    removeLocation(locations[locations.length - 1]);
+  }
+});
+locWrap.addEventListener('click', () => locInput.focus());
+
+// ── Source toggles ──
+document.querySelectorAll('.source-toggle').forEach(el => {
+  el.addEventListener('click', () => el.classList.toggle('active'));
+});
+
+// ── Launch job ──
+document.getElementById('btn-launch').addEventListener('click', async () => {
+  if (!locations.length) { alert('Please add at least one location.'); return; }
+  const sources = [...document.querySelectorAll('.source-toggle.active')].map(el => el.dataset.source);
+  if (!sources.length) { alert('Please select at least one source.'); return; }
+  const niches = document.getElementById('niches-input').value
+    .split(',').map(s => s.trim()).filter(Boolean);
+  const payload = {
+    locations,
+    niches: niches.length ? niches : null,
+    sources,
+    max_pages: parseInt(document.getElementById('max-pages').value) || 5,
+    concurrency: parseInt(document.getElementById('concurrency').value) || 3,
+  };
+  const btn = document.getElementById('btn-launch');
+  btn.disabled = true; btn.textContent = 'Launching...';
+  try {
+    const res = await fetch(`${API}/api/jobs/`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const job = await res.json();
+    loadJobLeads(job.id);
+    loadJobs();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🚀 Launch Job';
+  }
+});
+
+// ── Jobs list ──
+async function loadJobs() {
+  try {
+    const res = await fetch(`${API}/api/jobs/`);
+    const jobs = await res.json();
+    const list = document.getElementById('jobs-list');
+    list.innerHTML = '';
+    jobs.forEach(job => {
+      const locs = JSON.parse(job.locations || '[]').join(', ');
+      const card = document.createElement('div');
+      card.className = 'job-card' + (job.id === activeJobId ? ' active' : '');
+      card.innerHTML = `
+        <div class="job-card-top">
+          <span class="job-id">#${job.id}</span>
+          <span class="badge ${job.status}">${job.status}</span>
+        </div>
+        <div class="job-meta">${locs || 'No locations'} · ${job.leads_found} leads</div>
+      `;
+      card.onclick = () => loadJobLeads(job.id);
+      list.appendChild(card);
+    });
+  } catch(e) {}
+}
+
+// ── Load leads for a job ──
+async function loadJobLeads(jobId) {
+  clearInterval(pollTimer);
+  activeJobId = jobId;
+  activeSource = 'all';
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('leads-panel').style.display = 'block';
+  renderLeads(jobId);
+  loadJobs();
+}
+
+async function renderLeads(jobId) {
+  const jobRes = await fetch(`${API}/api/jobs/${jobId}`);
+  const job = await jobRes.json();
+  const locs = JSON.parse(job.locations || '[]').join(', ');
+  document.getElementById('leads-title').textContent = locs || `Job #${jobId}`;
+  document.getElementById('leads-meta').textContent = `${job.leads_found} leads · ${job.status} · sources: ${job.sources}`;
+
+  // progress
+  const progressWrap = document.getElementById('progress-wrap');
+  progressWrap.style.display = (job.status === 'running' || job.status === 'pending') ? 'block' : 'none';
+
+  // filters
+  const filterBar = document.getElementById('filter-bar');
+  const srcs = ['all', ...job.sources.split(',')];
+  filterBar.innerHTML = '';
+  srcs.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (s === activeSource ? ' active' : '');
+    btn.textContent = s === 'all' ? 'All' : s;
+    btn.onclick = () => { activeSource = s; renderLeads(jobId); };
+    filterBar.appendChild(btn);
+  });
+
+  // leads
+  const url = `${API}/api/leads/?job_id=${jobId}${activeSource !== 'all' ? '&source=' + activeSource : ''}&limit=500`;
+  const leadsRes = await fetch(url);
+  const leads = await leadsRes.json();
+  const tbody = document.getElementById('leads-tbody');
+  const noLeads = document.getElementById('no-leads');
+
+  if (!leads.length) {
+    tbody.innerHTML = '';
+    noLeads.style.display = 'block';
+  } else {
+    noLeads.style.display = 'none';
+    tbody.innerHTML = leads.map(l => `
+      <tr>
+        <td><span class="source-pill ${l.source}">${l.source}</span></td>
+        <td>${l.name || '—'}</td>
+        <td>${l.phone || '—'}</td>
+        <td>${l.email ? `<span class="cell-email">${l.email}</span>` : '—'}</td>
+        <td>${l.website ? `<a class="cell-link" href="${l.website}" target="_blank">🔗 site</a>` : '—'}</td>
+        <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.address || '—'}</td>
+        <td>${l.rating ?? '—'}</td>
+        <td>${l.category || '—'}</td>
+        <td>${l.location || '—'}</td>
+        <td>${l.niche || '—'}</td>
+      </tr>
+    `).join('');
+  }
+
+  // poll if still running
+  if (job.status === 'running' || job.status === 'pending') {
+    pollTimer = setTimeout(() => renderLeads(jobId), 4000);
+  }
+}
+
+// ── Export CSV ──
+document.getElementById('btn-export').addEventListener('click', () => {
+  if (!activeJobId) return;
+  window.open(`${API}/api/leads/export?job_id=${activeJobId}`, '_blank');
+});
+
+// ── Init ──
+loadJobs();
+setInterval(loadJobs, 10000);
+</script>
 </body>
 </html>

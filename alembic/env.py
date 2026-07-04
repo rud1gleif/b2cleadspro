@@ -1,28 +1,12 @@
 import asyncio
 from logging.config import fileConfig
 from sqlalchemy import pool
-from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
-from app.config import settings
 from app.database import Base
-import app.models  # noqa: F401 - ensure all models are imported
+import app.models  # noqa: F401 — register all models
 
 config = context.config
-
-# Ensure the URL uses the async driver scheme required by create_async_engine.
-# alembic.ini may contain a plain postgresql:// URL; we rewrite it here.
-def _async_url(url: str) -> str:
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql+asyncpg://", 1)
-    if url.startswith("sqlite:///") and "+" not in url:
-        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
-    return url
-
-config.set_main_option("sqlalchemy.url", _async_url(settings.database_url))
-
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -31,17 +15,13 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(
-        url=url,
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
+    context.configure(url=url, target_metadata=target_metadata,
+                      literal_binds=True, dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
 
 
-def do_run_migrations(connection: Connection) -> None:
+def do_run_migrations(connection):
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

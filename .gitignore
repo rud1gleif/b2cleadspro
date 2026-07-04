@@ -1,34 +1,14 @@
-# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
-.eggs/
-dist/
-build/
-*.egg
-
-# Env
+*.pyo
 .env
 *.env
-
-# Data
-data/*.db
-data/*.csv
-data/*.json
-
-# Logs
-*.log
-logs/
-
-# Docker
-*.pid
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
+.venv/
+venv/
 .DS_Store
-Thumbs.db
+*.db
+*.sqlite3
+data/
+logs/
+*.log
+.playwright/

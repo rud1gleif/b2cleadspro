@@ -1,45 +1,28 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, Field
+from typing import List, Optional
 from datetime import datetime
-from enum import Enum
-import uuid
-
-
-class JobStatus(str, Enum):
-    pending = "pending"
-    running = "running"
-    done = "done"
-    failed = "failed"
-    cancelled = "cancelled"
 
 
 class JobCreate(BaseModel):
-    location_id: Optional[uuid.UUID] = None
-    source_types: Optional[List[str]] = None
-    keywords: Optional[List[str]] = None
-    proxy_mode: Optional[str] = "rotating_residential"
+    locations: List[str] = Field(..., min_length=1)
+    niches: Optional[List[str]] = None
+    sources: List[str] = Field(default=["gmaps", "yelp", "yellowpages", "angi"])
+    max_pages: int = Field(default=5, ge=1, le=50)
+    concurrency: int = Field(default=3, ge=1, le=10)
 
 
-class JobUpdate(BaseModel):
-    status: Optional[JobStatus] = None
-    error_message: Optional[str] = None
-
-
-class JobRead(BaseModel):
-    id: uuid.UUID
-    location_id: Optional[uuid.UUID]
+class JobOut(BaseModel):
+    id: int
+    locations: str
+    niches: Optional[str]
+    sources: str
+    max_pages: int
+    concurrency: int
     status: str
-    source_types: Optional[List[str]]
-    keywords: Optional[List[str]]
-    proxy_mode: str
-    pages_discovered: int
-    pages_scraped: int
-    emails_found: int
-    emails_verified: int
-    error_message: Optional[str]
+    leads_found: int
+    error: Optional[str]
     created_at: datetime
-    started_at: Optional[datetime]
-    finished_at: Optional[datetime]
+    updated_at: datetime
 
     class Config:
         from_attributes = True
